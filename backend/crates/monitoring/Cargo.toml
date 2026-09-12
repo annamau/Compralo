@@ -9,8 +9,7 @@ async-trait.workspace = true
 chrono.workspace = true
 domain.workspace = true
 product-intelligence = { path = "../product-intelligence" }
-spider = { version = "2.53.9", default-features = false }
+spider = { version = "2.53.9", default-features = false, features = ["spider_cloud"] }
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
-

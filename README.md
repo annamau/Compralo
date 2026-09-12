@@ -18,8 +18,10 @@ cp .env.example .env
 cargo run -p server
 ```
 
-`RUST_LOG` is optional. No AI API key is currently required because the AI
-provider integration is defined but disabled by default.
+`SPIDER_CLOUD_API_KEY` is required. Direct crawling is attempted first and
+Spider Cloud is used as a fallback for blocked or failed requests. `RUST_LOG`
+is optional. No AI API key is currently required because the AI provider
+integration is defined but disabled by default.
 
 ## Create a monitor
 

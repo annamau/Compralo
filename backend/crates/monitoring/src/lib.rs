@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
 use domain::{FetchedPage, Monitor, NormalizedOffer, OfferSource, OfferSourceError};
 use product_intelligence::ProductInterpreter;
+use spider::configuration::{SpiderCloudConfig, SpiderCloudMode, SpiderCloudReturnFormat};
 use spider::website::Website;
 use tokio::{
     net::lookup_host,
@@ -26,6 +27,7 @@ pub struct FetchConfig {
     pub user_agent: String,
     pub global_concurrency: usize,
     pub per_domain_concurrency: usize,
+    pub spider_cloud_api_key: Option<String>,
 }
 
 impl Default for FetchConfig {
@@ -37,6 +39,7 @@ impl Default for FetchConfig {
             user_agent: "CompraloMonitor/0.1".into(),
             global_concurrency: 16,
             per_domain_concurrency: 2,
+            spider_cloud_api_key: None,
         }
     }
 }
@@ -201,6 +204,13 @@ impl SpiderFetcher {
             .with_request_timeout(Some(self.config.request_timeout))
             .with_crawl_timeout(Some(self.config.crawl_timeout))
             .with_user_agent(Some(&self.config.user_agent));
+        if let Some(api_key) = self.config.spider_cloud_api_key.as_deref() {
+            website.with_spider_cloud_config(
+                SpiderCloudConfig::new(api_key)
+                    .with_mode(SpiderCloudMode::Fallback)
+                    .with_return_format(SpiderCloudReturnFormat::Raw),
+            );
+        }
         let mut receiver = website.subscribe(2);
         tokio::time::timeout(self.config.crawl_timeout, website.scrape())
             .await

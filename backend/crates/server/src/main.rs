@@ -1,3 +1,4 @@
+use anyhow::Context;
 use merchant_demo::DemoMerchant;
 use monitoring::{FetchConfig, SpiderFetcher, SpiderOfferSource};
 use persistence::Store;
@@ -15,12 +16,18 @@ async fn main() -> anyhow::Result<()> {
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "sqlite://buy-agent.sqlite?mode=rwc".into());
     let bind = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".into());
+    let spider_cloud_api_key = std::env::var("SPIDER_CLOUD_API_KEY")
+        .context("SPIDER_CLOUD_API_KEY is required; add it to .env")?;
     let store = Store::connect(&database_url).await?;
     store.migrate().await?;
     let listener = TcpListener::bind(&bind).await?;
     let merchant = DemoMerchant::new();
+    let fetch_config = FetchConfig {
+        spider_cloud_api_key: Some(spider_cloud_api_key),
+        ..FetchConfig::default()
+    };
     let source = Arc::new(SpiderOfferSource::new(
-        SpiderFetcher::new(FetchConfig::default()),
+        SpiderFetcher::new(fetch_config),
         Arc::new(ProductInterpreter::new()),
     ));
     let worker = MonitorWorker::new(

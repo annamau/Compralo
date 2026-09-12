@@ -13,15 +13,20 @@ import { NewOrderView } from './components/NewOrderView';
 import { WatchListView } from './components/WatchListView';
 import { useAuth } from './state/authContext';
 import type { InstructionSummary } from '@/services/api.types';
+import { isMockMode } from '@/services/apiClient';
 
 export function App() {
   const { session } = useAuth();
-  const [tab, setTab] = useState<PanelTab>('new-order');
+  // El backend Rust solo sirve monitores y eventos: abre directamente la
+  // superficie que existe en vivo y deja el análisis dinámico para mocks.
+  const [tab, setTab] = useState<PanelTab>(() => (isMockMode() ? 'new-order' : 'orders'));
   const [summaries, setSummaries] = useState<InstructionSummary[] | null>(null);
 
   const handleCount = useCallback((next: InstructionSummary[]) => setSummaries(next), []);
 
-  if (!session) return <AuthView />;
+  // El backend Rust no implementa usuarios ni auth. Mantener la puerta de
+  // login en vivo haría inaccesible su watch list aunque el adaptador funcione.
+  if (!session && isMockMode()) return <AuthView />;
 
   const needsAttention = summaries?.some((item) => item.status === 'AWAITING_APPROVAL') ?? false;
 

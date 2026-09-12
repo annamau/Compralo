@@ -25,6 +25,7 @@ import type {
 } from './api.types';
 import { ApiError, type HttpMethod } from './http';
 import { mockRequest } from './mockStore';
+import * as monitors from './monitorsAdapter';
 import {
   clearSession,
   readMockOverride,
@@ -161,6 +162,7 @@ function messageFrom(body: unknown): string | null {
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 export async function login(email: string): Promise<StoredSession> {
+  if (!mockMode) return monitors.login(email);
   const res = await request<AuthLoginResponse>('POST', '/auth/login', { email });
   const next: StoredSession = { token: res.token, user_id: res.user_id, email };
   session = next;
@@ -173,6 +175,7 @@ export async function login(email: string): Promise<StoredSession> {
  * caducado no se descubre hasta el primer 401 en medio de un flujo.
  */
 export async function me(): Promise<AuthMeResponse> {
+  if (!mockMode) return monitors.me();
   return request<AuthMeResponse>('GET', '/auth/me');
 }
 
@@ -184,10 +187,12 @@ export async function logout(): Promise<void> {
 // ─── P3 ──────────────────────────────────────────────────────────────────────
 
 export async function understand(payload: UnderstandRequest): Promise<UnderstandResponse> {
+  if (!mockMode) return monitors.understand(payload);
   return request<UnderstandResponse>('POST', '/understand', payload);
 }
 
 export async function discover(payload: DiscoverRequest): Promise<DiscoverResponse> {
+  if (!mockMode) return monitors.discover(payload);
   return request<DiscoverResponse>('POST', '/discover', payload);
 }
 
@@ -196,18 +201,22 @@ export async function discover(payload: DiscoverRequest): Promise<DiscoverRespon
 export async function createInstruction(
   payload: CreateInstructionRequest,
 ): Promise<CreateInstructionResponse> {
+  if (!mockMode) return monitors.createInstruction(payload);
   return request<CreateInstructionResponse>('POST', '/instructions', payload);
 }
 
 export async function listInstructions(): Promise<InstructionListResponse> {
+  if (!mockMode) return monitors.listInstructions();
   return request<InstructionListResponse>('GET', '/instructions');
 }
 
 export async function getInstruction(id: string): Promise<InstructionDetail> {
+  if (!mockMode) return monitors.getInstruction(id);
   return request<InstructionDetail>('GET', `/instructions/${encodeURIComponent(id)}`);
 }
 
 export async function cancelInstruction(id: string): Promise<CancelResponse> {
+  if (!mockMode) return monitors.cancelInstruction(id);
   return request<CancelResponse>('POST', `/instructions/${encodeURIComponent(id)}/cancel`);
 }
 
@@ -217,6 +226,7 @@ export async function respondToSubstitute(
   candidateId: string,
   approved: boolean,
 ): Promise<SubstituteResponse> {
+  if (!mockMode) return monitors.respondToSubstitute(id, candidateId, approved);
   return request<SubstituteResponse>('POST', `/instructions/${encodeURIComponent(id)}/substitute`, {
     candidate_id: candidateId,
     approved,

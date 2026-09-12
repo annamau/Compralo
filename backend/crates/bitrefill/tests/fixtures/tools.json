@@ -1,0 +1,562 @@
+{
+  "tools": [
+    {
+      "name": "get-product-details",
+      "description": "Get detailed information about a specific product (gift card, eSIM, or refill/top-up), including prices, availability, and recipient_type (which indicates if a phone number or account ID is needed for purchase). Returns payment_methods as a structured object with three groups: address_based (crypto methods that return an on-chain payment address), link_only (fiat/third-party methods such as fiat_card, apple_pay, binance_pay, and kraken_pay that require completing payment on the Bitrefill website), and balance (account balance/cashback). Bill-payment products need a bill_payment_id from submit-prepayment-step before buy-products. IMPORTANT: Always use the search-products tool first to find the correct product slug before calling this tool.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "description": "The product ID (slug) to get details for. It provides information about the product, including available denominations.",
+            "type": "string"
+          },
+          "language": {
+            "description": "The language to get the product details in. Default is en.",
+            "default": "en",
+            "type": "string"
+          },
+          "currency": {
+            "description": "The currency to get the pricing in. Default is USD.",
+            "default": "USD",
+            "type": "string",
+            "enum": [
+              "BTC",
+              "ETH",
+              "USDT",
+              "USDC",
+              "SOL",
+              "USD",
+              "EUR",
+              "GBP",
+              "AUD",
+              "CAD",
+              "INR",
+              "BRL"
+            ]
+          }
+        },
+        "required": [
+          "product_id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "search-products",
+      "description": "List all products or search for giftcards, eSIMs and refills by country Alpha2 ISO code, category, keyword or name. Also use this for broad real-world goals (travel planning, errands, gifts, subscriptions, gaming, shopping): break the goal into its underlying purchasable needs (for example travel \u2192 mobile data/eSIM, local transport, food delivery, groceries, entertainment) and run one targeted search per need with a specific query. Always pass the overall goal in the required intent parameter.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "query": {
+            "description": "The query to search for product brands by name. This is a fulltext search on product names and some keywords, but it is not a semantic search engine. Use specific brand names (e.g., \"Amazon\", \"Apple\", \"Starbucks\") for best results. To get all products, use the search-products tool with \"*\" query.",
+            "default": "*",
+            "type": "string"
+          },
+          "intent": {
+            "description": "Required. The user's broad goal driving this search, e.g. \"two-week trip to Berlin\". Context only; does not change matching.",
+            "type": "string",
+            "minLength": 1
+          },
+          "country": {
+            "description": "The country where the product should be searched in. It defaults to the US.",
+            "default": "US",
+            "type": "string"
+          },
+          "in_stock": {
+            "description": "Whether to include the out of stock products in the results. If you want to get all products, set this to false.",
+            "default": true,
+            "type": "boolean"
+          },
+          "category": {
+            "description": "The category to filter products by.",
+            "type": "string",
+            "enum": [
+              "refill",
+              "bundles",
+              "pin",
+              "food",
+              "food-delivery",
+              "voip",
+              "data",
+              "dth",
+              "pharmacy",
+              "retail",
+              "apparel",
+              "health-beauty",
+              "cosmetics",
+              "spa",
+              "natural-herbal-care",
+              "digital-wallet",
+              "automobiles",
+              "music",
+              "home",
+              "electronics",
+              "pets",
+              "restaurants",
+              "groceries",
+              "streaming",
+              "games",
+              "game-stores",
+              "in-game-currencies",
+              "experiences",
+              "gifts",
+              "online-marketplaces",
+              "travel",
+              "flights",
+              "cruises",
+              "online-travel-agencies",
+              "accommodation",
+              "train",
+              "bus",
+              "car-rental",
+              "entertainment",
+              "literature",
+              "bitcoin",
+              "department-stores",
+              "sports-n-outdoors",
+              "transportation",
+              "gasoline",
+              "bill",
+              "utility-bills",
+              "payment-cards",
+              "multi-brand",
+              "esim",
+              "vpn",
+              "other",
+              "kids",
+              "all-bills",
+              "credit-card",
+              "water-electricity-gas",
+              "commission-businesses",
+              "phone",
+              "internet-cable-tv",
+              "installment-payments",
+              "catalog-sales",
+              "education",
+              "taxes",
+              "mortgages-property-management",
+              "mortgages-home-equity",
+              "hoa-rent",
+              "insurance",
+              "financial-services",
+              "cemeteries-funerals",
+              "security-monitoring",
+              "club-membership",
+              "press",
+              "auto-loans",
+              "banking",
+              "sanitation",
+              "healthcare"
+            ]
+          },
+          "product_type": {
+            "description": "Optional filter by product type: giftcard, esim or refill. If not specified, returns all.",
+            "type": "string",
+            "enum": [
+              "giftcard",
+              "esim",
+              "refill"
+            ]
+          },
+          "page": {
+            "description": "The page number to return, defaults to 1.",
+            "default": 1,
+            "type": "number"
+          },
+          "per_page": {
+            "description": "The number of products to return per page, defaults to 25. Max per page is 250.",
+            "default": 25,
+            "type": "number",
+            "maximum": 250
+          }
+        },
+        "required": [
+          "intent"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "buy-products",
+      "description": "Purchase gift cards, eSIMs, and refills/top-ups with crypto, fiat, or account balance. Flow: search-products \u2192 get-product-details \u2192 buy-products. Use \"package_value\" from get-product-details as package_value here. Check recipient_type to know if refill_input is required. Fiat payment methods (fiat_card, google_pay, apple_pay, ideal, eps, p24, bancontact) require billing_address and are charged in the method's standard currency (USD for fiat_card/google_pay/apple_pay, EUR for ideal/eps/p24/bancontact); the user completes payment via payment_link on the Bitrefill website. To pay with a card the user already saved, pass saved_fiat_card_id from list-saved-fiat-cards together with payment_method \"fiat_card\" instead of billing_address.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "cart_items": {
+            "description": "Array of items to purchase. Each item requires a product_id (slug) and package_value from the get-product-details tool. For multiple items of the same product, include multiple entries with the same product_id and package_value. Maximum 15 items per cart.",
+            "minItems": 1,
+            "maxItems": 15,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "product_id": {
+                  "description": "The product slug (e.g., \"amazon_com-usa\", \"esim-france\")",
+                  "type": "string"
+                },
+                "package_value": {
+                  "description": "Denomination from get-product-details \"package_value\" (e.g., \"10\", \"50\", \"1GB, 7 Days\").",
+                  "type": "string"
+                },
+                "package_id": {
+                  "description": "Deprecated: use package_value instead.",
+                  "type": "string"
+                },
+                "refill_input": {
+                  "description": "Recipient identifier for refill/top-up products. Check recipient_type from get-product-details: phone_number \u2192 phone in international format (e.g., \"4915123456789\"), account \u2192 account ID, email \u2192 email address, username \u2192 username. Not needed when recipient_type is \"none\".",
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "bill_payment_id": {
+                  "description": "Required for products whose get-product-details response includes a \"prepayment\" block. Obtained by looping submit-prepayment-step until it returns step=\"final\".",
+                  "type": "string"
+                },
+                "gift": {
+                  "description": "Include this object to send the purchased item as a gift via email.",
+                  "type": "object",
+                  "properties": {
+                    "recipient_name": {
+                      "description": "Name of the gift recipient.",
+                      "type": "string",
+                      "maxLength": 100
+                    },
+                    "recipient_email": {
+                      "description": "Email address to send the gift to.",
+                      "type": "string",
+                      "format": "email",
+                      "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                    },
+                    "sender_name": {
+                      "description": "Name of the sender shown in the gift email.",
+                      "type": "string",
+                      "maxLength": 100
+                    },
+                    "message": {
+                      "description": "Personal message included in the gift email.",
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "send_date": {
+                      "description": "ISO date for scheduled delivery. Must be 12h\u20136mo from now. If omitted, the gift is sent immediately upon delivery.",
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    },
+                    "theme": {
+                      "description": "Email theme for the gift. Options: red, green, yellow, birthday, christmas, bitcoin, chinese, valentines. Defaults to \"red\" if not specified.",
+                      "type": "string",
+                      "enum": [
+                        "red",
+                        "green",
+                        "yellow",
+                        "birthday",
+                        "christmas",
+                        "bitcoin",
+                        "chinese",
+                        "valentines"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "recipient_name",
+                    "recipient_email",
+                    "sender_name"
+                  ]
+                }
+              },
+              "required": [
+                "product_id"
+              ]
+            }
+          },
+          "payment_method": {
+            "description": "Payment method. Crypto (returns on-chain address + payment link): ethereum, eth_base, usdc_base, usdt_erc20, usdt_trc20, usdc_erc20, usdc_polygon, usdt_polygon, usdc_arbitrum, usdt_arbitrum, usdc_solana, usdt_solana, solana, eth_arbitrum, usdc_bsc, usdt_bsc, lightning, ark, bitcoin, dogecoin, dash, litecoin, ton, usdt_ton. Fiat / third-party (returns payment link only \u2014 user completes payment on the Bitrefill website): fiat_card, google_pay, apple_pay, ideal, eps, p24, bancontact, binance_pay, kraken_pay. Account balance (auto-debit): \"balance\", \"cashback\". Default to \"balance\" when the user wants to pay from their account balance.",
+            "type": "string",
+            "enum": [
+              "ethereum",
+              "eth_base",
+              "usdc_base",
+              "usdt_erc20",
+              "usdt_trc20",
+              "usdc_erc20",
+              "usdc_polygon",
+              "usdt_polygon",
+              "usdc_arbitrum",
+              "usdt_arbitrum",
+              "usdc_solana",
+              "usdt_solana",
+              "brc_solana",
+              "usdt_lightning",
+              "solana",
+              "eth_arbitrum",
+              "bnb_bsc",
+              "usdc_bsc",
+              "usdt_bsc",
+              "lightning",
+              "ark",
+              "bitcoin",
+              "dogecoin",
+              "dash",
+              "sui",
+              "usdc_sui",
+              "usdt_sui",
+              "litecoin",
+              "ton",
+              "usdt_ton",
+              "binance_pay",
+              "kraken_pay",
+              "brusd_arbitrum",
+              "brusd_bsc",
+              "brusd_polygon",
+              "brusd_erc20",
+              "brusd_base",
+              "usdc_tempo",
+              "usdt_tempo",
+              "fiat_card",
+              "google_pay",
+              "apple_pay",
+              "ideal",
+              "eps",
+              "p24",
+              "bancontact",
+              "balance",
+              "cashback"
+            ]
+          },
+          "balance_currency": {
+            "description": "Which currency sub-account to debit when payment_method is \"balance\". One of: EUR, USD, BTC. If omitted, uses the user's primary currency. Ignored when payment_method is not \"balance\". Note: multi-balance payments (combining multiple sub-accounts) are not supported yet.",
+            "type": "string",
+            "enum": [
+              "USD",
+              "EUR",
+              "BTC",
+              "XBT"
+            ]
+          },
+          "return_payment_link": {
+            "description": "Return payment link (true) or crypto payment details (false). Use true when user prefers web checkout or paying with x402. Use false only when user specifically wants raw crypto addresses.",
+            "default": true,
+            "type": "boolean"
+          },
+          "billing_address": {
+            "description": "Billing address. Required when payment_method is a fiat method (fiat_card, google_pay, apple_pay, ideal, eps, p24, bancontact) \u2014 country is always required; fiat_card additionally requires city, postal_code, and address_line1. Not needed when saved_fiat_card_id is set.",
+            "type": "object",
+            "properties": {
+              "country": {
+                "description": "ISO 3166-1 alpha-2 billing country code.",
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 2
+              },
+              "state": {
+                "description": "Billing address state/province. Optional, only used for fiat_card.",
+                "type": "string",
+                "maxLength": 100
+              },
+              "city": {
+                "description": "Billing address city. Required when payment_method is \"fiat_card\".",
+                "type": "string",
+                "maxLength": 100
+              },
+              "postal_code": {
+                "description": "Billing address postal code. Required when payment_method is \"fiat_card\".",
+                "type": "string",
+                "maxLength": 20
+              },
+              "address_line1": {
+                "description": "Billing address line 1. Required when payment_method is \"fiat_card\".",
+                "type": "string",
+                "maxLength": 200
+              },
+              "address_line2": {
+                "description": "Billing address line 2. Optional, only used for fiat_card.",
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "country"
+            ]
+          },
+          "saved_fiat_card_id": {
+            "description": "A card the user has already saved on their Bitrefill account, taken from a card's \"id\" in list-saved-fiat-cards. Requires payment_method \"fiat_card\" and a logged-in user. The card supplies its own billing address, so billing_address is not used.",
+            "type": "string"
+          },
+          "coupon_code": {
+            "description": "Promo/coupon code to apply to this purchase. The discount, cashback, or free-product benefit is applied to the invoice; an invalid or non-eligible code fails the purchase with a clear error instead of being silently ignored.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "email": {
+            "description": "Email address to send the receipt to.",
+            "type": "string",
+            "format": "email",
+            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          }
+        },
+        "required": [
+          "cart_items",
+          "payment_method",
+          "email"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get-invoice-by-id",
+      "description": "Get detailed information about a specific invoice by its ID.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "invoice_id": {
+            "description": "Invoice ID (UUID with dashes, e.g., \"6654a2ea-0df7-4f44-bc72-c1c6ad8b7b34\"). Returned by buy-products.",
+            "type": "string"
+          },
+          "invoice_access_token": {
+            "description": "The access token of the invoice. Returned by buy-products.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invoice_id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "search_help_articles",
+      "description": "Search Bitrefill's help center for answers to support questions about orders, payments and invoices, gift cards, eSIMs, phone refills/top-ups, the Bitrefill Card, account and login, store credit, and bill pay. Use this when the user asks how something works or hits a problem (e.g. \"why does my invoice say underpaid?\", \"how do I redeem a gift card?\"). Returns matching articles with a text snippet; call get_help_article for the full text. This is support content, not the product catalog \u2014 use search-products to find products to buy.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "query": {
+            "description": "The support question or keywords to search for.",
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "description": "Filter by category slug (locale-specific). Every response lists the valid slugs in availableCategories, so you can filter on a follow-up call.",
+            "type": "string",
+            "minLength": 1
+          },
+          "locale": {
+            "description": "Article language. Defaults to en-us; use es for Spanish.",
+            "default": "en-us",
+            "type": "string",
+            "enum": [
+              "en-us",
+              "es"
+            ]
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_help_article",
+      "description": "Get the full plain-text content of a Bitrefill help center article by ID. Call this after search_help_articles or list_help_articles when the snippet is not enough to answer the user. Returns the article title, full body text, url, category, and section.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "The help article ID, as returned by search_help_articles or list_help_articles.",
+            "type": "string",
+            "minLength": 1
+          },
+          "locale": {
+            "description": "Article language. Defaults to en-us; use es for Spanish.",
+            "default": "en-us",
+            "type": "string",
+            "enum": [
+              "en-us",
+              "es"
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "list_help_articles",
+      "description": "List published Bitrefill help center articles, optionally filtered by category slug. Use this to browse available help topics when keyword search may miss relevant content. Returns id, title, url, category, section, and sectionName for each article; call get_help_article for full text.",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "category": {
+            "description": "Filter by category slug (locale-specific). Every response lists the valid slugs in availableCategories, so you can filter on a follow-up call.",
+            "type": "string",
+            "minLength": 1
+          },
+          "locale": {
+            "description": "Article language. Defaults to en-us; use es for Spanish.",
+            "default": "en-us",
+            "type": "string",
+            "enum": [
+              "en-us",
+              "es"
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    }
+  ]
+}

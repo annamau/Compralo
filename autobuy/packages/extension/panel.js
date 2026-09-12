@@ -192,6 +192,7 @@ async function initBackend() {
   $("backend_url").placeholder = DEFAULT_BACKEND_URL;
   $("intelligence_url").value = (await chrome.storage.sync.get("intelligence_url")).intelligence_url ?? "";
   $("dash-link").href = chrome.runtime.getURL("dashboard.html");
+  $("bitrefill-link").href = `${API_BASE}/bitrefill`;
   const known = KNOWN_BACKENDS.includes(API_BASE);
   $("backend_hint").textContent = known
     ? `Using ${API_BASE}.`

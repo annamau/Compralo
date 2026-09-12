@@ -1,0 +1,36 @@
+id: amazon_es-spain
+name: Amazon.es Spain
+country_code: ES
+currency: EUR
+categories[1]: online-marketplaces
+recipient_type: none
+in_stock: true
+ratings:
+  rating_value: 5
+  rating_count: 232
+  review_count: 130
+  score_distribution[5]: 0,0,0,8,224
+reviews[3]{content,score,score_max,author_name,created_time,date}:
+  "La experiencia ha sido muy buena! Haces la transferencia en crypto y en menos de 5 segundos tienes el código para usarlo inmediatamente, 10/10.",5,5,sxrgi.eth,"2026-05-25T19:18:53.924Z",2026-05-25
+  "Todo correcto, pedido rapido y efectivo. Ademas envie mas BTC de lo indicado y me realizaron un reembolso.",5,5,ahorro,"2026-01-08T00:09:31.285Z",2026-01-08
+  "Simplemente, cumple lo que promete.\n100% recomendable.\nYa la he utilizado en otras oportunidades y lo seguire haciendo.-",5,5,davidb,"2025-05-12T20:45:29.000Z",2025-05-12
+packages[9]{package_value,package_currency,payment_price,payment_currency}:
+  "5",EUR,"5.12",EUR
+  "1500",EUR,"1534.61",EUR
+  "1000",EUR,"1023.08",EUR
+  "500",EUR,"511.54",EUR
+  "200",EUR,"204.62",EUR
+  "100",EUR,"102.31",EUR
+  "50",EUR,"51.15",EUR
+  "20",EUR,"20.46",EUR
+  "10",EUR,"10.23",EUR
+url: "https://www.bitrefill.com/amazon_es-spain/"
+subtitles: "Shop electronics, cookware, fashion, beauty & more."
+specialNote: "For new Amazon accounts, please add a credit/debit card first to ensure smooth gift card redemption"
+descriptions: "<p>Amazon's mission is to be the most customer-focused company in the world, giving our customers the option to choose from an incredible variety of products and receive them as soon as possible. Amazon gift cards can be exchanged for millions of Amazon products They are the ideal gift and with them you will be right as they allow the recipient to choose what they want and need.</p><p></p><p><strong>Important</strong></p><p>Amazon's anti-fraud process locks cards and accounts if they suspect their terms are broken, the most common reason is being outside of your country and/or using a VPN, but there are others like: reselling/dropshipping, adding a gift card on a brand new account with no other payment methods added, adding excessive amount of high denomination gift cards in a short time period, and others.</p>"
+instructions: "<ul><li><span>After you receive your Amazon gift card code, you'll need to login to your Amazon account.</span></li><li><span>Click on \"My Account\"&gt;\"Gift Card and Top-up my account\"&gt; \"Apply a Gift Card to Your Account\".</span></li><li><span>Next, you'll need to enter your Amazon gift card code and click \"Apply to your balance\".</span></li><li><span>You will be able to use your balance in your next purchase.</span></li></ul><span></span><p><strong>Note: </strong>Some cards are PIN-based and will require a security code sent to you via SMS. In this cases, the card will display a redemption link to input the security code. Simply copy/paste the link into a new tab and enter the security code there. You can also find the security code at the end of these redemption instructions.</p>"
+termsConditions: "Restrictions apply, see amazon.com/gc-legal     Brand Partner Contact:   Visit: http://amazon.com"
+payment_methods:
+  address_based[24]: ethereum,eth_base,usdc_base,usdt_erc20,usdt_trc20,usdc_erc20,usdc_polygon,usdt_polygon,usdc_arbitrum,usdt_arbitrum,usdc_solana,usdt_solana,solana,eth_arbitrum,usdc_bsc,usdt_bsc,lightning,ark,bitcoin,dogecoin,dash,litecoin,ton,usdt_ton
+  link_only[7]: fiat_card,google_pay,apple_pay,ideal,eps,p24,bancontact
+  balance[2]: balance,cashback

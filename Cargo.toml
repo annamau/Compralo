@@ -5,6 +5,7 @@ members = [
     "backend/crates/persistence",
     "backend/crates/rule-engine",
     "backend/crates/server",
+    "backend/crates/bitrefill",
     "backend/crates/execution",
     "backend/crates/merchant-demo",
     "backend/crates/merchant-p4",

@@ -81,6 +81,7 @@ async fn main() -> anyhow::Result<()> {
     .with_funds(funds.clone());
     tokio::spawn(worker.run());
     tracing::info!(%bind, "server listening");
+    let bitrefill_routes = bitrefill::configured_router(store.pool().clone()).await?;
     axum::serve(
         listener,
         router(AppState {
@@ -88,7 +89,8 @@ async fn main() -> anyhow::Result<()> {
             merchant,
             checkout_merchant,
             funds,
-        }),
+        })
+        .merge(bitrefill_routes),
     )
     .await?;
     Ok(())

@@ -113,6 +113,10 @@ services:
       MERCHANT: p4
       P4_URL: http://money:4242
       DATABASE_URL: sqlite:///data/buy-agent.sqlite?mode=rwc
+      BITREFILL_PUBLIC_ORIGIN: ${BITREFILL_PUBLIC_ORIGIN:-}
+      BITREFILL_ENCRYPTION_KEY: ${BITREFILL_ENCRYPTION_KEY:-}
+      BITREFILL_CLIENT_ID: ${BITREFILL_CLIENT_ID:-}
+      BITREFILL_PURCHASES_ENABLED: ${BITREFILL_PURCHASES_ENABLED:-false}
       RUST_LOG: ${RUST_LOG:-server=info,tower_http=info}
       SPIDER_CLOUD_API_KEY: ${SPIDER_CLOUD_API_KEY:?set SPIDER_CLOUD_API_KEY in deploy/.env}
     volumes:

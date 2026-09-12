@@ -12,7 +12,10 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROFILE="${COMPRALO_CHROME_PROFILE:-$HOME/.compralo/chrome-profile}"
-PORT="${COMPRALO_CDP_PORT:-9222}"
+PORT="${COMPRALO_CDP_PORT:-}"
+if [ -z "$PORT" ]; then           # first free DevTools port from 9222 up; another Chromium may own 9222
+  for p in 9222 9223 9224 9225 9226; do lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1 || { PORT=$p; break; }; done
+fi
 BIN="${CHROME_FOR_TESTING:-}"
 if [ -z "$BIN" ]; then
   BIN="$(ls -d "$HOME"/Library/Caches/ms-playwright/chromium-*/chrome-mac-arm64/"Google Chrome for Testing.app"/Contents/MacOS/"Google Chrome for Testing" 2>/dev/null | sort -V | tail -1 || true)"

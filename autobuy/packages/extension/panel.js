@@ -28,6 +28,15 @@ async function readPage(force = false) {
     status("Open a product page (http or https) and the panel will read it.");
     return;
   }
+  const currentUrl = new URL(tab.url);
+  if (currentUrl.hostname === 'bitrefill.com' || currentUrl.hostname.endsWith('.bitrefill.com')
+      || currentUrl.origin === new URL(API()).origin
+      || /(?:^|\/)(?:oauth|login|signin|sign-in|checkout|account)(?:\/|$)/i.test(currentUrl.pathname)) {
+    ++seq; lastReadUrl = tab.url; lastReadAt = Date.now();
+    show('product', false); show('order', false); show('result', false); show('gift-card', false); show('watch-instead', false);
+    status('Account and payment pages are not read. Return to your product tab after connecting.');
+    return;
+  }
   const my = ++seq;
   lastReadUrl = tab.url ?? ""; lastReadAt = Date.now();
   status(`Reading ${tab.url ? hostOf(tab.url) : "this page"}…`, "skeleton");
@@ -35,13 +44,16 @@ async function readPage(force = false) {
   try {
     const [{ result: page }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => ({ url: location.href, title: document.title, html: document.documentElement.outerHTML }),
+      func: () => document.querySelector('input[type="password"]')
+        ? { blocked: true }
+        : { url: location.href, title: document.title, html: document.documentElement.outerHTML },
     });
+    if (page.blocked) throw new Error('Sign-in forms are not read. Open a product page.');
     let screenshot = null;
     try { screenshot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 55 }); } catch (e) { console.warn("screenshot unavailable:", e?.message); }
     let res;
     try {
-      res = await fetch(`${await intelligenceUrl()}/understand`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...page, screenshot }) });
+      res = await fetch(`${await intelligenceUrl()}/understand`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...page, screenshot }), signal: AbortSignal.timeout(45000) });
     } catch (e) { throw new Error(`${e.message} — is the backend running on ${API()}?`); }
     const text = await res.text();
     let body; try { body = JSON.parse(text); } catch { body = { error: text }; }

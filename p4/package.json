@@ -1,0 +1,7 @@
+{
+  "name": "compralo-p4-money",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node money.mjs", "fixtures": "bash fixtures.sh" },
+  "dependencies": { "express": "^5.1.0", "stripe": "^18.5.0" }
+}

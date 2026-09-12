@@ -8,6 +8,21 @@ Persistent product URL monitoring and deterministic buy-order evaluation.
 cargo run -p server
 ```
 
+The complete HTTP reference is in [API.md](API.md).
+
+## Docker
+
+```sh
+export SPIDER_CLOUD_API_KEY=your-key
+docker compose up --build -d
+curl http://localhost:8080/health
+```
+
+The Compose volume keeps the SQLite database across container replacements.
+The current GCP deployment runs the same image on an `e2-micro` VM in Madrid
+with SQLite on a separate persistent disk. It is available over HTTPS at
+`https://34-175-42-226.sslip.io`.
+
 The server listens on `127.0.0.1:3000` and creates `buy-agent.sqlite` by
 default. Override these with `BIND_ADDR` and `DATABASE_URL`.
 

@@ -10,6 +10,12 @@ Local Docker base URL:
 http://localhost:8080
 ```
 
+Current GCP Madrid deployment:
+
+```text
+https://34-175-42-226.sslip.io
+```
+
 Requests and responses use JSON unless noted otherwise. Timestamps use RFC 3339 UTC strings, IDs are UUIDs, currencies use uppercase ISO 4217 codes, and monetary values are integers in the currency's minor unit. For example, `45000` EUR means EUR 450.00.
 
 The API currently has permissive CORS and no authentication. Put authentication and TLS in front of it before exposing it to untrusted clients.

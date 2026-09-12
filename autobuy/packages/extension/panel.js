@@ -163,6 +163,7 @@ $("order").addEventListener("submit", async (ev) => {
 });
 
 async function rustRequest(path, body) {
+  API_BASE = await backendUrl();
   const response = await fetch(`${API()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
   const text = await response.text();
   let data; try { data = JSON.parse(text); } catch { throw new Error(`Rust API ${response.status}: ${text || "empty response"}`); }

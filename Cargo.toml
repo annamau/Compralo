@@ -7,6 +7,7 @@ members = [
     "backend/crates/server",
     "backend/crates/execution",
     "backend/crates/merchant-demo",
+    "backend/crates/merchant-p4",
     "backend/crates/monitoring",
     "backend/crates/product-intelligence",
 ]
@@ -23,6 +24,9 @@ axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 domain = { path = "backend/crates/domain" }
 dotenvy = "0.15"
+# `rustls` is 0.13's spelling of what 0.12 called `rustls-tls`. Pinned to the version spider
+# already pulls in, so the workspace carries one TLS stack and no OpenSSL.
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "charset"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono", "uuid", "migrate"] }

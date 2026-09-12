@@ -1637,6 +1637,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "merchant-p4"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "domain",
+ "execution",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2714,9 +2732,11 @@ dependencies = [
  "execution",
  "futures-core",
  "merchant-demo",
+ "merchant-p4",
  "monitoring",
  "persistence",
  "product-intelligence",
+ "reqwest 0.13.5",
  "rule-engine",
  "serde",
  "serde_json",

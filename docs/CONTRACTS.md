@@ -256,4 +256,4 @@ The three offers the demo turns on. Keep them in `fixtures/offers.json` so anyon
 | 3 | €248 | QUALIFIES | Correct variant, approved seller, delivered within limit |
 | 4 | €465 | DECLINED | Over the €250 ceiling — refused by Stripe, `amount_too_large` |
 
-Fixture 4 exists only to be refused by the payment layer. It is the last beat of the demo — do not let it be refused by application code. `p4/fixtures.sh` fires all four at a running instance.
+Fixture 4 exists only to be refused by the payment layer. It is the last beat of the demo — do not let it be refused by application code. `money/fixtures.sh` fires all four at a running instance.

@@ -10,3 +10,20 @@ build/
 *.db
 *.db-shm
 *.db-wal
+# --- Node (extension/, money/, intelligence/) ---
+# --- Rust (backend/) ---
+backend/target
+# --- SQLite (backend/) ---
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+# --- Python (intelligence/, si P3 elige Python) ---
+__pycache__/
+.venv/
+*.pyc
+# --- Secrets ---
+# --- OS ---
+Thumbs.db
+
+# deploy/ — real keys live here and never in git (deploy/.env.example is the template)
+deploy/.env

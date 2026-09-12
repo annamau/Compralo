@@ -23,8 +23,7 @@ export function WatchListView({ onCount }: { onCount?: (summaries: InstructionSu
 
   useEffect(() => {
     let cancelled = false;
-
-    listInstructions()
+    const load = () => listInstructions()
       .then((response) => {
         if (cancelled) return;
         setInstructions(response.instructions);
@@ -34,9 +33,13 @@ export function WatchListView({ onCount }: { onCount?: (summaries: InstructionSu
         if (cancelled) return;
         setError(cause instanceof Error ? cause.message : 'No se pudo cargar la lista.');
       });
+    void load();
+    // No hay SSE global; el listado se refresca sin inventar last_checked_at.
+    const timer = globalThis.setInterval(() => void load(), 5000);
 
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, [onCount]);
 
@@ -52,8 +55,8 @@ export function WatchListView({ onCount }: { onCount?: (summaries: InstructionSu
   if (!instructions) {
     return (
       <div className="flex items-center gap-2 px-1 py-6 text-xs text-slate-400">
-        <Loader2 className="size-4 animate-spin" aria-hidden />
-        Cargando tus órdenes…
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+        Cargando monitores del servidor…
       </div>
     );
   }
@@ -61,9 +64,9 @@ export function WatchListView({ onCount }: { onCount?: (summaries: InstructionSu
   if (instructions.length === 0) {
     return (
       <div className="card space-y-1 text-center">
-        <p className="text-sm text-slate-200">Todavía no tienes órdenes</p>
+          <p className="text-sm text-slate-200">No hay monitores en el servidor</p>
         <p className="text-xs text-slate-400">
-          Abre la ficha de un producto y arma la primera desde «Nueva orden».
+          Crea uno desde «Nueva orden» con una URL pública de producto.
         </p>
       </div>
     );

@@ -3,9 +3,25 @@
   "name": "AutoBuy",
   "version": "0.1.0",
   "description": "Limit orders for everyday products. Reads the product page you are on, then buys when your terms are met.",
-  "permissions": ["activeTab", "scripting", "sidePanel"],
-  "host_permissions": ["http://localhost:3000/*", "http://*/*", "https://*/*"],
-  "background": { "service_worker": "background.js" },
-  "action": { "default_title": "AutoBuy — open side panel" },
-  "side_panel": { "default_path": "panel.html" }
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "sidePanel",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "https://34-175-42-226.sslip.io/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "AutoBuy — open side panel"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  }
 }

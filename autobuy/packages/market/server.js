@@ -3,7 +3,10 @@
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.MARKET_PORT ?? 4000);
-const RETAILERS = ["store-a", "store-b", "store-c"];
+// store-* are the simulator's own retailers and are checked out here. `amazon` is different:
+// it is accepted so a listing can exist and be evaluated, but P4 routes an amazon offer to the
+// Zinc aggregator, so its /checkout never reaches this file. Its url is what Zinc receives.
+const RETAILERS = ["store-a", "store-b", "store-c", "amazon"];
 
 // Seed: the same product at all three retailers, all out of stock.
 const seed = () => new Map([

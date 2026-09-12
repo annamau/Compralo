@@ -3,11 +3,12 @@
 // The executor is awaited, so two qualifying offers in one tick cannot race.
 import type { Instruction, NormalisedOffer, RawOffer } from "../../shared/types.js";
 import { MARKET_URL, POLL_INTERVAL_MS } from "./env.js";
-import { persist, seenSet, state } from "./state.js";
+import { persist, seenSet, setStatus, state } from "./state.js";
 import { fetchOffers } from "./market.js";
 import { describeProduct, normaliseOffer } from "./ai.js";
 import { evaluate } from "./rules.js";
 import { execute } from "./executor.js";
+import { release } from "./stripe.js";
 import { emit } from "./events.js";
 import { money, round2, summary } from "./util.js";
 
@@ -36,6 +37,7 @@ export async function tick() {
       return;
     }
     ticks += 1;
+    await sweepDeadlines();
     const active = [...state.instructions.values()].filter((i) => i.status === "ACTIVE");
     if (ticks % 10 === 1) console.log(`[monitor] tick ${ticks}: ${offers.length} listing(s), ${offers.filter((o) => o.in_stock).length} in stock, ${active.length} ACTIVE instruction(s)`);
     for (const instruction of active) {
@@ -50,6 +52,23 @@ export async function tick() {
     }
   } finally {
     ticking = false;
+  }
+}
+
+// A deadline that has passed is a terminal state like any other, and terminal states release the
+// hold. Nothing qualified in time, so the customer is made whole and the mandate stops.
+async function sweepDeadlines() {
+  const now = Date.now();
+  for (const i of state.instructions.values()) {
+    if (i.status !== "ACTIVE") continue;
+    const deadline = Date.parse(i.constraints.deadline);
+    if (!Number.isFinite(deadline) || deadline > now) continue;
+    setStatus(i, "EXPIRED");
+    const r = await release(i.id, "deadline passed");
+    emit(i.id, "EXPIRED",
+      `deadline ${i.constraints.deadline.slice(0, 10)} passed with nothing qualifying — ${r.status === "released" ? `hold ${i.stripe_payment_intent ?? "?"} released, nothing charged` : r.status === "spent" ? "funds were already captured for a purchase" : `hold could not be released (${r.message ?? "money service unreachable"}) — check the money service`}`,
+      { hold_id: i.stripe_payment_intent, deadline: i.constraints.deadline, release: r });
+    console.log(`[monitor] ${i.id.slice(0, 8)} EXPIRED at its deadline, funds ${r.status}`);
   }
 }
 

@@ -1,6 +1,9 @@
 // AutoBuy side panel. Reads the active tab (DOM + a screenshot), asks the backend to understand it,
 // renders the product-specific controls, and creates the buy order. No model calls happen here.
-const API = "http://localhost:3000";
+// The backend base URL is resolved from chrome.storage at boot (see config.js), so one build of
+// this extension works against the laptop and the deployed box. Everything below reads API().
+let API_BASE = DEFAULT_BACKEND_URL;
+const API = () => API_BASE;
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...children) => { const n = Object.assign(document.createElement(tag), props); n.append(...children.filter((c) => c !== null && c !== undefined && c !== "")); return n; };
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
@@ -19,10 +22,10 @@ async function readPage(force = false) {
   const tab = await activeTab();
   if (!tab?.id) { status("No active tab.", "error"); return; }
   if (!force && tab.url && tab.url === lastReadUrl && Date.now() - lastReadAt < 4000) return; // same page, just read
-  if (tab.url && (tab.url.startsWith(API) || !/^https?:/.test(tab.url))) {                    // our own dashboard, chrome://, new tab…
+  if (tab.url && (tab.url.startsWith(API()) || !/^https?:/.test(tab.url))) {                    // our own dashboard, chrome://, new tab…
     lastReadUrl = tab.url; lastReadAt = Date.now();
     show("product", false); show("order", false); show("result", false);
-    status(tab.url.startsWith(API) ? "This is the AutoBuy dashboard. Open a product page and the panel will read it." : "Open a product page (http or https) and the panel will read it.");
+    status(tab.url.startsWith(API()) ? "This is the AutoBuy dashboard. Open a product page and the panel will read it." : "Open a product page (http or https) and the panel will read it.");
     return;
   }
   const my = ++seq;
@@ -38,8 +41,8 @@ async function readPage(force = false) {
     try { screenshot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 55 }); } catch (e) { console.warn("screenshot unavailable:", e?.message); }
     let res;
     try {
-      res = await fetch(`${API}/understand`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...page, screenshot }) });
-    } catch (e) { throw new Error(`${e.message} — is the backend running on ${API}?`); }
+      res = await fetch(`${API()}/understand`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...page, screenshot }) });
+    } catch (e) { throw new Error(`${e.message} — is the backend running on ${API()}?`); }
     const text = await res.text();
     let body; try { body = JSON.parse(text); } catch { body = { error: text }; }
     if (!res.ok) throw new Error(`${res.status}: ${body.error ?? text}`);   // backend error, verbatim
@@ -118,7 +121,7 @@ async function renderForm(controls) {
   $("controls").replaceChildren(...controls.filter((c) => !UNIVERSAL.has(String(c.key).toLowerCase())).map(renderControl));
   $("max_total").value = product.listed_price != null ? Math.ceil(Number(product.listed_price)) : "";
   $("currency").textContent = product.currency ?? "EUR";
-  const retailers = await fetch(`${API}/retailers`).then((r) => r.json()).catch(() => ["store-a", "store-b", "store-c"]);
+  const retailers = await fetch(`${API()}/retailers`).then((r) => r.json()).catch(() => ["store-a", "store-b", "store-c"]);
   $("retailers").replaceChildren(...retailers.map((r) => el("label", { className: "check" }, el("input", { type: "checkbox", value: r, checked: true }), el("span", { textContent: r }))));
   show("order");
 }
@@ -135,7 +138,7 @@ $("order").addEventListener("submit", async (ev) => {
     variant: readVariant(), allow_bundles: $("allow_bundles").checked,
   };
   try {
-    const res = await fetch(`${API}/instructions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ product, constraints, payment_method: $("payment_method").value }) });
+    const res = await fetch(`${API()}/instructions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ product, constraints, payment_method: $("payment_method").value }) });
     const text = await res.text();
     let body; try { body = JSON.parse(text); } catch { body = { error: text }; }
     if (!res.ok) throw new Error(`${res.status}: ${body.error ?? text}`);
@@ -156,14 +159,32 @@ function renderResult(i) {
     el("h1", { textContent: ok ? "Buy order is live" : "Needs your attention" }),
     el("p", { textContent: ok
       ? `Watching ${c.approved_retailers.join(", ")} for ${i.product.name} at ≤ ${c.max_total.toFixed(2)} ${c.currency} until ${c.deadline.slice(0, 10)}. You can quit Chrome — the agent keeps polling.`
-      : `Stripe returned ${i.status === "NEEDS_ATTENTION" ? "requires_action (3DS challenge)" : i.status}. Nothing will be bought until it is resolved.` }),
+      : `The payment layer returned ${i.status === "NEEDS_ATTENTION" ? "requires_action (3DS challenge)" : i.status}. Nothing will be bought until it is resolved.` }),
     el("div", { className: "ids", textContent: `instruction ${i.id}` }),
-    el("div", { className: "ids", textContent: `stripe ${i.stripe_payment_intent ?? "—"}` }),
-    el("a", { className: "button", href: `${API}/dashboard`, target: "_blank", rel: "noopener", textContent: "Open dashboard ↗" }),
+    el("div", { className: "ids", textContent: `hold ${i.stripe_payment_intent ?? "—"}` }),
+    el("a", { className: "button", href: `${API()}/dashboard`, target: "_blank", rel: "noopener", textContent: "Open dashboard ↗" }),
   );
   show("result");
   $("result").scrollIntoView({ behavior: "smooth", block: "start" });
 }
+
+// ---- Backend setting. Resolved before the first read so the panel never calls the wrong host.
+async function initBackend() {
+  API_BASE = await backendUrl();
+  $("backend_url").value = API_BASE === DEFAULT_BACKEND_URL ? "" : API_BASE;
+  $("backend_url").placeholder = DEFAULT_BACKEND_URL;
+  $("dash-link").href = `${API_BASE}/dashboard`;
+  const known = KNOWN_BACKENDS.includes(API_BASE);
+  $("backend_hint").textContent = known
+    ? `Using ${API_BASE}.`
+    : `Using ${API_BASE} — not in manifest.json host_permissions, so fetches will fail silently until you add it there and reload the extension.`;
+}
+$("save_backend").addEventListener("click", async () => {
+  API_BASE = await setBackendUrl($("backend_url").value);
+  await initBackend();
+  status(`Backend set to ${API_BASE}`, "");
+  readPage(true);
+});
 
 // ---- Re-read triggers: the button, tab switches, navigations (full loads and SPA URL changes),
 // and a 1.5 s URL poll as a fallback for sites whose navigations fire no tab events.
@@ -172,4 +193,4 @@ $("reread").addEventListener("click", () => readPage(true));
 chrome.tabs.onActivated.addListener(scheduleRead);
 chrome.tabs.onUpdated.addListener((_id, info, tab) => { if (tab.active && (info.status === "complete" || info.url)) scheduleRead(); });
 setInterval(async () => { const t = await activeTab(); if (t?.url && t.status === "complete" && t.url !== lastReadUrl) scheduleRead(); }, 1500);
-readPage(true);
+initBackend().then(() => readPage(true));

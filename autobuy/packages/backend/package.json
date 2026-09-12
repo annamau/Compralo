@@ -17,7 +17,6 @@
     "cheerio": "^1.2.0",
     "exa-js": "^2.19.0",
     "hono": "^4.13.0",
-    "stripe": "^22.6.0",
     "zod": "^4.6.0"
   },
   "devDependencies": {

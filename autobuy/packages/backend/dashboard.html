@@ -43,6 +43,14 @@ td.chk .d{font-size:14px;margin-top:4px}
 td.verdict{font-weight:800;white-space:nowrap;font-size:17px}
 td.verdict.ok{color:var(--ok)} td.verdict.no{color:var(--bad)}
 .empty{color:var(--muted);padding:26px;text-align:center}
+/* The money shot. A payment-layer refusal must not look like a gate rejection: the gate is our
+   code, this is a ceiling enforced outside our process. Different shape, different words. */
+.refused{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;border-radius:6px;padding:3px 8px;background:var(--badbg);color:var(--bad);border:1px solid var(--bad);margin-right:8px}
+.ev.declined{border-color:var(--bad);background:linear-gradient(90deg,var(--badbg),var(--panel) 60%)}
+.ev.declined .ty{color:var(--bad)}
+button.cancel{margin-top:10px;font:inherit;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+button.cancel:hover{color:var(--bad);border-color:var(--bad)}
+button.cancel[disabled]{opacity:.5;cursor:default}
 .timeline{display:grid;gap:6px;font-size:15px}
 .ev{display:grid;grid-template-columns:82px 250px 1fr;gap:12px;padding:8px 12px;border-radius:8px;background:var(--panel);border:1px solid var(--line)}
 .ev .t{color:var(--muted);font-variant-numeric:tabular-nums}
@@ -57,7 +65,7 @@ footer b{color:var(--ink)}
 <header>
   <h1>AutoBuy</h1>
   <span id="dot" class="dot"></span><span id="conn" class="badge">connecting</span>
-  <span id="ai" class="badge">AI: …</span><span id="stripe" class="badge">Stripe: …</span>
+  <span id="ai" class="badge">AI: …</span><span id="stripe" class="badge">Money: …</span>
   <span class="badge" style="margin-left:auto">AI handles ambiguity · deterministic software handles money</span>
 </header>
 <main>
@@ -93,6 +101,7 @@ function card(i) {
     <div class="sub">${c.approved_retailers.join(", ")} · until ${c.deadline.slice(0, 10)}</div>
     ${i.order ? `<div class="big">${money(i.order.total)} ${c.currency} <span class="sub">from <b>${esc(i.order.retailer)}</b></span></div><div class="sub">order ${esc(i.order.merchant_order_id)}</div>` : ""}
     <div class="sub mono" style="margin-top:8px">${i.id.slice(0, 8)} · ${esc(i.stripe_payment_intent ?? "no hold")}</div>
+    ${["PURCHASED", "CANCELLED", "EXPIRED"].includes(i.status) ? "" : `<button class="cancel" data-cancel="${i.id}">Cancel · release hold</button>`}
   </div>`;
 }
 function renderCols() {
@@ -103,6 +112,13 @@ function renderCols() {
     $("n-" + k).textContent = g[k].length ? `(${g[k].length})` : "";
   }
   document.querySelectorAll(".card").forEach((el) => (el.onclick = () => { selected = el.dataset.id; render(); }));
+  document.querySelectorAll("button[data-cancel]").forEach((b) => (b.onclick = async (e) => {
+    e.stopPropagation();                                  // the card underneath is a selector
+    const id = b.dataset.cancel;
+    b.disabled = true; b.textContent = "Releasing…";
+    try { await fetch(`/instructions/${id}/cancel`, { method: "POST" }); } catch {}
+    await loadAll();
+  }));
 }
 function renderTable() {
   const rows = events.filter((e) => e.instruction_id === selected && ["OFFER_REJECTED", "OFFER_QUALIFIED", "REVALIDATED"].includes(e.type) && e.data?.checks);
@@ -122,16 +138,20 @@ function renderTable() {
   }
   $("dtable").innerHTML = h;
 }
-const TONE = { PURCHASED: "good", OFFER_QUALIFIED: "good", PAYMENT_CAPTURED: "good", CHECKOUT_OK: "good", REVALIDATED: "info", LOCK_ACQUIRED: "info", CREATED: "info", OFFER_REJECTED: "bad", FAILED: "bad", CHECKOUT_PRICE_MISMATCH: "warn", PAYMENT_ACTION_REQUIRED: "warn" };
+const TONE = { PURCHASED: "good", OFFER_QUALIFIED: "good", PAYMENT_CAPTURED: "good", CHECKOUT_OK: "good", REVALIDATED: "info", LOCK_ACQUIRED: "info", CREATED: "info", OFFER_REJECTED: "bad", FAILED: "bad", CHECKOUT_PRICE_MISMATCH: "warn", PAYMENT_ACTION_REQUIRED: "warn", PAYMENT_DECLINED: "declined", CANCELLED: "warn", EXPIRED: "warn", FUNDS_RELEASED: "info" };
 function renderTimeline() {
   const list = events.filter((e) => e.instruction_id === selected);
-  $("timeline").innerHTML = list.length ? list.map((e) => `<div class="ev ${TONE[e.type] || ""}"><span class="t">${e.at.slice(11, 19)}</span><span class="ty">${e.type}</span><span>${esc(e.detail)}</span></div>`).join("") : `<div class="empty">no events yet</div>`;
+  $("timeline").innerHTML = list.length ? list.map((e) => {
+    // PAYMENT_DECLINED carries a reason we did not write. Say who refused, then quote it.
+    const badge = e.type === "PAYMENT_DECLINED" ? `<span class="refused">refused by payment layer</span>` : "";
+    return `<div class="ev ${TONE[e.type] || ""}"><span class="t">${e.at.slice(11, 19)}</span><span class="ty">${e.type}</span><span>${badge}${esc(e.detail)}</span></div>`;
+  }).join("") : `<div class="empty">no events yet</div>`;
 }
 async function usage() {
   try {
     const u = await fetch("/usage").then((r) => r.json());
     $("ai").textContent = `AI: ${u.ai === "claude" ? "claude-opus-5" : "hardcoded"}`;
-    $("stripe").textContent = `Stripe: ${u.stripe}`;
+    $("stripe").textContent = `Money: P4${u.money ? " " + String(u.money).replace(/^https?:\/\//, "") : ""}`;
     const f = (b) => `<b>${b.calls}</b> call${b.calls === 1 ? "" : "s"} · ${b.input_tokens + b.cache_read_tokens + b.cache_write_tokens} in / ${b.output_tokens} out · <b>$${b.usd.toFixed(4)}</b>`;
     const extra = Object.entries(u).filter(([k, v]) => !["understand", "normalise"].includes(k) && v && typeof v === "object" && "calls" in v && v.calls > 0).map(([k, v]) => `<span>${esc(k)}: ${f(v)}</span>`).join("");
     $("usage").innerHTML = `<span>understand: ${f(u.understand)}</span><span>normalise: ${f(u.normalise)} · ${u.normalise_cache} cached listing${u.normalise_cache === 1 ? "" : "s"}</span>${extra}<span>total <b>$${u.total_usd.toFixed(4)}</b></span>`;

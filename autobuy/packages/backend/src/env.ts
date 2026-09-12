@@ -21,6 +21,10 @@ export const MARKET_URL = process.env.MARKET_URL ?? "http://localhost:4000";
 export const PORT = Number(process.env.PORT ?? 3000);
 export const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 3000);
 
+// ---- P4 money service. AutoBuy holds no Stripe key: every hold, capture, release and
+// aggregator order goes through it. The backend refuses to boot if it is unreachable.
+export const P4_URL = (process.env.P4_URL ?? "http://localhost:4242").replace(/\/+$/, "");
+
 // ---- Exa. Absent EXA_API_KEY the Exa source reports mode "off" and yields no offers.
 // EXA_POLL_INTERVAL_MS is deliberately far slower than POLL_INTERVAL_MS: the simulator is
 // free and local, the real web costs $0.001 a page and rate-limits. See README.

@@ -62,7 +62,13 @@ export type Evaluation = { qualified: boolean; checks: Check[] };
 export type EventType =
   | "CREATED" | "OFFER_SEEN" | "OFFER_NORMALISED" | "OFFER_REJECTED" | "OFFER_QUALIFIED"
   | "LOCK_ACQUIRED" | "REVALIDATED" | "PAYMENT_CAPTURED" | "CHECKOUT_OK" | "PURCHASED"
-  | "CHECKOUT_PRICE_MISMATCH" | "PAYMENT_ACTION_REQUIRED" | "FAILED";
+  | "CHECKOUT_PRICE_MISMATCH" | "PAYMENT_ACTION_REQUIRED"
+  // The payment layer refused the purchase itself (Stripe's amount_too_large, a card decline).
+  // Distinct from CHECKOUT_PRICE_MISMATCH, which is the merchant refusing: this one is a ceiling
+  // we did not write, enforced outside our process. The reason is quoted verbatim.
+  | "PAYMENT_DECLINED"
+  | "CANCELLED" | "EXPIRED" | "FUNDS_RELEASED"
+  | "FAILED";
 
 export type Event = {
   at: string; instruction_id: string;

@@ -403,6 +403,7 @@ async fn schema(pool: &SqlitePool) -> anyhow::Result<()> {
     CREATE TABLE IF NOT EXISTS bitrefill_sessions(id TEXT PRIMARY KEY,payload BLOB NOT NULL,expires INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS bitrefill_quotes(id TEXT PRIMARY KEY,owner TEXT NOT NULL,payload BLOB NOT NULL,hash TEXT NOT NULL,status TEXT NOT NULL,expires INTEGER NOT NULL,amount INTEGER NOT NULL,created INTEGER NOT NULL,invoice_id TEXT,invoice BLOB,last_poll INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS bitrefill_events(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id TEXT NOT NULL,kind TEXT NOT NULL,created INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS bitrefill_auto_buy_setups(id TEXT PRIMARY KEY,owner TEXT NOT NULL,quote_id TEXT NOT NULL UNIQUE,maximum_minor INTEGER NOT NULL,created INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS bitrefill_rate(owner TEXT NOT NULL,minute INTEGER NOT NULL,count INTEGER NOT NULL,PRIMARY KEY(owner,minute));").execute(pool).await?;
     Ok(())
 }
@@ -410,7 +411,7 @@ fn routes(app: App) -> Router {
     Router::new().route("/bitrefill",get(page)).route("/bitrefill/app.js",get(js)).route("/bitrefill/style.css",get(css)).route("/bitrefill/oauth-client.json",get(client_metadata))
     .route("/v1/integrations/bitrefill/status",get(status)).route("/v1/integrations/bitrefill/oauth/start",post(oauth_start)).route("/v1/integrations/bitrefill/oauth/callback",get(oauth_callback))
     .route("/v1/integrations/bitrefill",axum::routing::delete(disconnect))
-    .route("/v1/bitrefill/match",post(match_article)).route("/v1/bitrefill/search",post(search)).route("/v1/bitrefill/products/{id}",get(details))
+    .route("/v1/auto-buy/setups",post(save_auto_buy_setup)).route("/v1/bitrefill/match",post(match_article)).route("/v1/bitrefill/search",post(search)).route("/v1/bitrefill/products/{id}",get(details))
     .route("/v1/bitrefill/quotes",post(quote)).route("/v1/bitrefill/quotes/{id}/approve",post(approve)).route("/v1/bitrefill/quotes/{id}/purchase",post(purchase)).route("/v1/bitrefill/quotes/{id}/cancel",post(cancel))
     .route("/v1/bitrefill/orders",get(orders)).route("/v1/bitrefill/orders/{id}",get(order)).route("/v1/bitrefill/orders/{id}/reveal",post(reveal))
     .layer(axum::middleware::from_fn(|req:axum::extract::Request,next:axum::middleware::Next|async move{
@@ -882,7 +883,73 @@ async fn match_article(
     a.event(&quote_id, "article_matched").await?;
     Ok(Json(
         json!({"quote_id":quote_id,"quote_hash":hash,"expires_at":now()+TTL,"quote":v,
-        "checkout_enabled":false,"checkout_note":"Gift-card review is ready. Purchasing inside the extension is not enabled yet."}),
+        "checkout_enabled":false,"checkout_note":"Save your auto-buy setup. Funding and automatic checkout are not active yet."}),
+    ))
+}
+
+#[derive(Deserialize)]
+struct AutoBuySetupInput {
+    funding_quote_id: String,
+    maximum_minor: i64,
+}
+async fn save_auto_buy_setup(
+    State(a): State<App>,
+    h: HeaderMap,
+    Json(input): Json<AutoBuySetupInput>,
+) -> Result<Json<Value>> {
+    let (owner, _) = a.session(&h, true, true).await?;
+    let row = owned(&a, &owner, &input.funding_quote_id).await?;
+    let quote = a.unseal(&row.get::<Vec<u8>, _>("payload"))?;
+    let article_price = quote["article"]["price_minor"]
+        .as_i64()
+        .ok_or(bad("Match an article before setting up auto-buy."))?;
+    let capacity = euros(&quote["face_value"])?;
+    if input.maximum_minor < article_price || input.maximum_minor > capacity {
+        return Err(bad(
+            "Choose a spending limit between the article price and the retailer funding amount.",
+        ));
+    }
+    let existing = sqlx::query(
+        "SELECT id,maximum_minor FROM bitrefill_auto_buy_setups WHERE quote_id=? AND owner=?",
+    )
+    .bind(&input.funding_quote_id)
+    .bind(&owner)
+    .fetch_optional(&a.pool)
+    .await
+    .map_err(internal)?;
+    let setup_id = if let Some(saved) = existing {
+        if saved.get::<i64, _>("maximum_minor") != input.maximum_minor {
+            return Err(bad("This setup already has a different spending limit."));
+        }
+        saved.get::<String, _>("id")
+    } else {
+        if row.get::<String, _>("status") != "quoted" || row.get::<i64, _>("expires") <= now() {
+            return Err(bad(
+                "Refresh the funding estimate before saving this setup.",
+            ));
+        }
+        let id = Uuid::new_v4().to_string();
+        sqlx::query("INSERT OR IGNORE INTO bitrefill_auto_buy_setups(id,owner,quote_id,maximum_minor,created) VALUES (?,?,?,?,?)")
+            .bind(&id).bind(&owner).bind(&input.funding_quote_id).bind(input.maximum_minor).bind(now())
+            .execute(&a.pool).await.map_err(internal)?;
+        let saved = sqlx::query(
+            "SELECT id,maximum_minor FROM bitrefill_auto_buy_setups WHERE quote_id=? AND owner=?",
+        )
+        .bind(&input.funding_quote_id)
+        .bind(&owner)
+        .fetch_one(&a.pool)
+        .await
+        .map_err(internal)?;
+        if saved.get::<i64, _>("maximum_minor") != input.maximum_minor {
+            return Err(bad("This setup already has a different spending limit."));
+        }
+        saved.get::<String, _>("id")
+    };
+    // Saving a plan grants no purchase authority and cannot activate the monitor worker.
+    Ok(Json(
+        json!({"setup_id":setup_id,"status":"awaiting_funding","funded":false,"watching":false,
+        "maximum_minor":input.maximum_minor,"currency":quote["article"]["currency"],
+        "message":"Setup saved. No money has been added. Monitoring and checkout have not started."}),
     ))
 }
 
@@ -1378,6 +1445,67 @@ mod tests {
             StatusCode::BAD_REQUEST
         );
     }
+    #[tokio::test]
+    async fn saving_auto_buy_setup_is_idempotent_and_grants_no_purchase_authority() {
+        let (a, mock) = setup().await;
+        let (_, quote) = request(&a,"/v1/bitrefill/match",Some(json!({"url":"https://amazon.es/dp/EXAMPLE","name":"Pens","price_minor":435,"currency":"EUR","country":"ES"}))).await;
+        let body = json!({"funding_quote_id":quote["quote_id"],"maximum_minor":435});
+        let (code, saved) = request(&a, "/v1/auto-buy/setups", Some(body.clone())).await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(saved["status"], "awaiting_funding");
+        assert_eq!(saved["funded"], false);
+        assert_eq!(saved["watching"], false);
+        assert_eq!(
+            request(&a, "/v1/auto-buy/setups", Some(body.clone()))
+                .await
+                .1["setup_id"],
+            saved["setup_id"]
+        );
+        assert_eq!(
+            request_headers(
+                &a,
+                "/v1/auto-buy/setups",
+                Some(body.clone()),
+                "session",
+                "wrong"
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            request_headers(
+                &a,
+                "/v1/auto-buy/setups",
+                Some(body),
+                "someone-else",
+                "csrf"
+            )
+            .await
+            .0,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            request(
+                &a,
+                "/v1/auto-buy/setups",
+                Some(json!({"funding_quote_id":quote["quote_id"],"maximum_minor":600}))
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST
+        );
+        let purchase = format!(
+            "/v1/bitrefill/quotes/{}/purchase",
+            quote["quote_id"].as_str().unwrap()
+        );
+        assert_eq!(
+            request(&a, &purchase, Some(json!({}))).await.0,
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(mock.calls.load(Ordering::SeqCst), 0);
+    }
+
     #[test]
     fn matching_chooses_smallest_sufficient_denomination() {
         let input = ArticleInput {

@@ -65,7 +65,7 @@ async function readPage(force = false) {
     renderProduct(body, page, screenshot);
     await renderForm(body.controls ?? []);
     status("");
-    show("order", false); show("watch-instead");
+    show("order", false); show("watch-instead", false);
     await matchGiftCard(my);
     // Some shops paint the price after load; read once more a moment later if it was missing.
     if (product.listed_price == null && !retriedFor.has(page.url)) { retriedFor.add(page.url); setTimeout(() => readPage(true), 2500); }
@@ -207,11 +207,11 @@ async function giftRequest(path, body) {
   const response = await fetch(`${API()}${path}`, {method:body?'POST':'GET', credentials:'include',
     headers:{'content-type':'application/json','x-csrf-token':giftCsrf}, ...(body?{body:JSON.stringify(body)}:{}), signal:AbortSignal.timeout(30000)});
   const value = await response.json();
-  if (!response.ok) throw new Error(value.error || 'Gift-card service is unavailable.');
+  if (!response.ok) throw new Error(value.error || 'Auto-buy funding is unavailable.');
   return value;
 }
 async function matchGiftCard(readSequence) {
-  const root = $('gift-card'); root.replaceChildren(el('h2',{textContent:'Gift card for this article'}),el('p',{textContent:'Checking the retailer and card value…'})); show('gift-card');
+  const root = $('gift-card'); root.replaceChildren(el('h2',{textContent:'Set up auto-buy'}),el('p',{textContent:'Checking funding for this retailer…'})); show('gift-card');
   try {
     // Establish only a same-backend HttpOnly session. Provider credentials never enter the extension.
     await fetch(`${API()}/bitrefill`, {credentials:'include',signal:AbortSignal.timeout(30000)});
@@ -230,18 +230,35 @@ async function matchGiftCard(readSequence) {
     const result=await giftRequest('/v1/bitrefill/match',{url:sourceUrl,name:product.name,price_minor:amount,currency:product.currency,country:'ES'});
     if (readSequence !== seq) return;
     const q=result.quote;
-    root.replaceChildren(el('h2',{textContent:'Your matching gift card'}),
-      el('p',{textContent:`For ${q.article.name}`}),
-      el('h3',{textContent:q.name}),
-      el('p',{textContent:`Card value: ${q.face_value} ${q.face_currency} · catalog price: ${(q.catalog_total_minor/100).toFixed(2)} ${q.catalog_currency}`}),
-      el('p',{textContent:`Covers the article’s listed ${(q.article.price_minor/100).toFixed(2)} ${q.article.currency}. Shipping and retailer exclusions must be checked separately.`}),
-      el('p',{textContent:'You are buying a gift card. The store product is not ordered automatically.'}));
-    const terms=el('details',{},el('summary',{textContent:'Redemption and restrictions'}));
+    root.replaceChildren(el('h2',{textContent:'Set up auto-buy'}),
+      el('p',{textContent:q.article.name}),
+      el('p',{textContent:`Retailer: ${hostOf(q.article.url)}`}),
+      el('p',{textContent:`Current product price: ${(q.article.price_minor/100).toFixed(2)} ${q.article.currency}`}),
+      el('p',{textContent:`Retailer credit: ${q.face_value} ${q.face_currency} · estimated funding cost: ${(q.catalog_total_minor/100).toFixed(2)} ${q.catalog_currency}`}));
+    const limit=el('input',{type:'number',step:'0.01',min:(q.article.price_minor/100).toFixed(2),max:q.face_value,value:(q.article.price_minor/100).toFixed(2)});
+    root.append(el('label',{className:'field'},el('span',{textContent:'Maximum total at the retailer'}),limit));
+    root.append(el('p',{className:'hint',textContent:'Funding is retailer-specific and may be non-refundable. It is not a refundable card hold or a general cash balance.'}));
+    const terms=el('details',{},el('summary',{textContent:'How funding works and restrictions'}));
     const plain=value=>new DOMParser().parseFromString(String(value||''),'text/html').body.textContent;
-    terms.append(el('p',{textContent:plain(q.restrictions)}),el('p',{textContent:plain(q.instructions)}));root.append(terms);
-    root.append(el('p',{className:'hint',textContent:result.checkout_note}),
-      el('button',{type:'button',className:'primary',disabled:true,textContent:'Buy gift card — unavailable in this test'}));
-  } catch(e) {if(readSequence===seq)root.replaceChildren(el('h2',{textContent:'Gift-card match unavailable'}),el('p',{textContent:e.message}));}
+    terms.append(el('p',{textContent:'Funding uses an Amazon Spain gift card supplied by Bitrefill. Its redemption code provides retailer credit; it does not itself order your product. Shipping, eligibility and any unused credit must be considered.'}),
+      el('p',{textContent:plain(q.restrictions)}),el('p',{textContent:plain(q.instructions)}));root.append(terms);
+    root.append(el('p',{className:'hint',textContent:'Save the setup now. No charge, funding or stock monitoring starts in this test.'}));
+    const save=el('button',{type:'button',className:'primary',textContent:'Save auto-buy setup'});
+    save.onclick=async()=>{
+      if(!limit.reportValidity())return;
+      save.disabled=true;
+      try {
+        const setup=await giftRequest('/v1/auto-buy/setups',{funding_quote_id:result.quote_id,maximum_minor:Math.round(Number(limit.value)*100)});
+        if(readSequence!==seq)return;
+        root.replaceChildren(el('h2',{textContent:'Auto-buy setup saved'}),el('p',{textContent:q.article.name}),
+          el('p',{textContent:`Spending limit: ${(setup.maximum_minor/100).toFixed(2)} ${setup.currency}`}),
+          el('span',{className:'pill',textContent:'Awaiting funding'}),el('p',{textContent:setup.message}),
+          el('p',{className:'hint',textContent:'The funding and retailer-checkout connections still need to be completed before this setup can run.'}),
+          el('p',{className:'ids',textContent:`Setup ${setup.setup_id}`}));
+      }catch(e){status(e.message,'error');save.disabled=false;}
+    };
+    root.append(save);
+  } catch(e) {if(readSequence===seq)root.replaceChildren(el('h2',{textContent:'Auto-buy funding unavailable'}),el('p',{textContent:e.message}));}
 }
 
 // ---- Backend setting. Resolved before the first read so the panel never calls the wrong host.

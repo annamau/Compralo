@@ -85,3 +85,9 @@ Sources: [Partner integration guide](https://docs.bitrefill.com/docs/mcp-partner
 Set `BITREFILL_EXTENSION_ORIGIN=chrome-extension://<your exact installed extension ID>` on Rust to accept CSRF-protected mutations from that extension only. Host permissions and an HttpOnly browser session are still required. OAuth credentials never enter extension storage. The same browser profile must complete the one-time connection.
 
 The inline flow currently supports matching and review only: `checkout_enabled` is false. The existing provider adapter requires a separately funded payment link, so enabling `BITREFILL_PURCHASES_ENABLED` does not make inline automatic payment available. No gift card is purchased by matching an article. A funded checkout mechanism is still required before enabling the inline Buy button.
+
+## Auto-buy setup wording and persistence
+
+The extension presents the article, spending limit, retailer credit and estimated funding cost under “Set up auto-buy.” Provider details are expandable; the visible funding explanation states that credit is retailer-specific and may be non-refundable. It is not represented as cash or a refundable card hold.
+
+`POST /v1/auto-buy/setups` saves an owner-bound setup from an unexpired article funding quote. Repeating the same quote and spending limit returns the same setup. This endpoint never creates an invoice, grants purchase authority, or starts a monitor. Its state is explicitly `awaiting_funding`, with `funded=false` and `watching=false`. Funding confirmation, gift-card redemption at retailer checkout and activation of the monitor are still unimplemented connections; saving a setup must not be described as a working funded auto-buy.

@@ -2,5 +2,9 @@
 *.db
 *.db-shm
 *.db-wal
+# DATABASE_URL defaults to buy-agent.sqlite, which is a dev artifact.
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 .env
 

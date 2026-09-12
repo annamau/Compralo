@@ -13,6 +13,7 @@ use domain::OfferSource;
 use domain::{CanonicalProduct, Monitor, MonitorStatus, NormalizedOffer, PurchaseConstraints};
 use execution::{ExecutionEngine, Merchant};
 use merchant_demo::{DemoMerchant, DemoOutcome};
+use merchant_p4::P4Funds;
 use persistence::{MonitorEvent, Store, StoreError};
 use rule_engine::{EvaluationDecision, evaluate};
 use serde::{Deserialize, Serialize};
@@ -24,13 +25,17 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct AppState {
     pub store: Store,
+    /// Kept as the concrete demo merchant so `/v1/demo/scenarios/{scenario}` can still drive it.
     pub merchant: DemoMerchant,
+    /// P4's money service, when `MERCHANT=p4`. `None` keeps the self-contained demo behaviour.
+    pub funds: Option<Arc<P4Funds>>,
 }
 
 pub struct MonitorWorker {
     store: Store,
     source: Arc<dyn OfferSource>,
     merchant: Arc<dyn Merchant>,
+    funds: Option<Arc<P4Funds>>,
     worker_id: String,
 }
 
@@ -45,8 +50,15 @@ impl MonitorWorker {
             store,
             source,
             merchant,
+            funds: None,
             worker_id: worker_id.into(),
         }
+    }
+
+    /// Give the worker a money service, so an expiry releases the hold behind it.
+    pub fn with_funds(mut self, funds: Option<Arc<P4Funds>>) -> Self {
+        self.funds = funds;
+        self
     }
 
     pub async fn run(self) {
@@ -63,7 +75,15 @@ impl MonitorWorker {
     }
 
     pub async fn tick(&self) -> anyhow::Result<bool> {
-        self.store.expire_due_monitors(Utc::now()).await?;
+        // Every terminal state releases committed funds. Best effort: the expiry already
+        // happened, and a money service that is down must not stall the checker.
+        for monitor_id in self.store.expire_due_monitors(Utc::now()).await? {
+            if let Some(funds) = &self.funds {
+                funds
+                    .release_best_effort(monitor_id, "deadline_expired")
+                    .await;
+            }
+        }
         let Some(job) = self
             .store
             .claim_due_job(&self.worker_id, chrono::Duration::seconds(45))
@@ -229,6 +249,11 @@ async fn cancel_monitor(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
     state.store.cancel_monitor(id).await?;
+    // The cancellation is already durable; releasing the hold is cleanup, so it never fails
+    // the request. P4's release is idempotent and safe to call without checking first.
+    if let Some(funds) = &state.funds {
+        funds.release_best_effort(id, "monitor_cancelled").await;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 async fn events(
@@ -265,16 +290,32 @@ async fn event_stream(
 struct PaymentRequest {
     maximum_minor: i64,
     currency: String,
+    /// Bumped on a re-arm. P4 keys the Stripe hold on it, so the same attempt returns the
+    /// same hold and a new attempt authorizes a fresh one.
+    #[serde(default = "first_attempt")]
+    attempt: i64,
 }
+fn first_attempt() -> i64 {
+    1
+}
+
 #[derive(Serialize)]
-struct IdResponse {
+struct PaymentAuthorizationResponse {
     id: Uuid,
+    /// The provider's handle on the money: P4's Stripe PaymentIntent, or a `demo-` stand-in.
+    hold_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires: Option<String>,
+    /// `committed` — the ceiling is held. `needs_attention` — the bank wants 3DS first.
+    status: &'static str,
 }
+
+/// The mandate hold. One tap: authorize the ceiling now, capture the true price at buy time.
 async fn authorize_payment(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(input): Json<PaymentRequest>,
-) -> Result<(StatusCode, Json<IdResponse>), ApiError> {
+) -> Result<(StatusCode, Json<PaymentAuthorizationResponse>), ApiError> {
     let monitor = state.store.get_monitor(id).await?;
     if input.maximum_minor < monitor.constraints.maximum_total_minor
         || !input
@@ -285,11 +326,42 @@ async fn authorize_payment(
             "authorization must cover the instruction maximum and currency",
         ));
     }
-    let id = state
+    let commit = match &state.funds {
+        Some(funds) => Some(
+            funds
+                .commit(id, input.maximum_minor, &input.currency, input.attempt)
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, monitor_id = %id, "p4 refused the mandate hold");
+                    ApiError::bad_gateway(format!("the money service refused the hold: {error}"))
+                })?,
+        ),
+        None => None,
+    };
+    let needs_attention = commit.as_ref().is_some_and(|c| c.needs_attention());
+    let (authorization_id, hold_id) = state
         .store
-        .create_payment_authorization(id, input.maximum_minor, &input.currency)
+        .create_payment_authorization_with_reference(
+            id,
+            commit.as_ref().map(|c| c.hold_id.as_str()),
+            input.maximum_minor,
+            &input.currency,
+            needs_attention,
+        )
         .await?;
-    Ok((StatusCode::CREATED, Json(IdResponse { id })))
+    Ok((
+        StatusCode::CREATED,
+        Json(PaymentAuthorizationResponse {
+            id: authorization_id,
+            hold_id,
+            expires: commit.and_then(|c| c.expires),
+            status: if needs_attention {
+                "needs_attention"
+            } else {
+                "committed"
+            },
+        }),
+    ))
 }
 
 async fn submit_offer(
@@ -374,6 +446,13 @@ impl ApiError {
             message: message.into(),
         }
     }
+    /// An upstream we depend on (today: P4) failed. Distinct from our own 400s on purpose.
+    fn bad_gateway(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::BAD_GATEWAY,
+            message: message.into(),
+        }
+    }
 }
 impl From<StoreError> for ApiError {
     fn from(value: StoreError) -> Self {
@@ -431,6 +510,7 @@ mod tests {
         router(AppState {
             store,
             merchant: DemoMerchant::new(),
+            funds: None,
         })
     }
     #[tokio::test]

@@ -59,9 +59,56 @@ Useful endpoints:
 - `POST /v1/monitors/{id}/payment-authorizations`
 - `GET /openapi.json`
 
+## P4 money
+
+`MERCHANT` chooses who holds the money and places the order. The default, `demo`,
+is self-contained and spends nothing. `p4` talks to the P4 money service over
+HTTP: a Stripe mandate hold at arm time, an aggregator order at buy time.
+
+```sh
+cd ../Compralo/p4 && npm start          # P4 on :4242, sandbox keys only
+
+MERCHANT=p4 P4_URL=http://localhost:4242 cargo run -p server
+```
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MERCHANT` | `demo` | `demo` or `p4` |
+| `P4_URL` | `http://localhost:4242` | P4's base URL; only read when `MERCHANT=p4` |
+| `P4_DEMO_FALLBACK` | `0` | Also treat retailer `demo` as covered under `MERCHANT=p4` |
+
+What changes with `p4`:
+
+- `POST /v1/monitors/{id}/payment-authorizations` calls `POST /funds/commit` and
+  stores the returned Stripe `hold_id` as the authorization's
+  `provider_reference`. It answers `{ id, hold_id, expires, status }`. A
+  `needs_attention` status means the bank wants 3DS: the monitor moves to
+  `payment_required` and the checker stops until the user confirms in the panel.
+- Checkout goes to `POST /checkout`, keyed `monitor:{id}` so a retry never buys
+  twice. `PURCHASED` confirms, `NEEDS_ATTENTION` asks for payment, `DECLINED`
+  and `FAILED` decline with the provider's own reason, and `UNKNOWN` — or a
+  timeout — stays unknown so the engine verifies with `GET /purchases/{key}`
+  before doing anything else.
+- `supports()` filters against `GET /coverage`, cached 60 s. A watch on an
+  uncovered retailer is a stock alert, not an order.
+- Cancelling a monitor and expiring one both call `POST /funds/release`,
+  best effort — the state change never waits on the money service.
+
+**The ceiling is not enforced in this process.** Checkout sends the offer total
+to P4 without comparing it to the mandate first, and lets Stripe refuse an
+over-mandate capture with `amount_too_large`. Note that P1's gate rejects an
+over-mandate offer earlier, on `TotalAboveMaximum`, so that refusal is only
+reachable by calling P4 directly.
+
 ## Verify
 
 ```sh
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
+```
+
+The P4 wiring tests skip themselves unless the money service is up:
+
+```sh
+P4_URL=http://localhost:4242 cargo test -p server --test p4_wiring -- --nocapture
 ```

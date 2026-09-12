@@ -1,0 +1,32 @@
+[package]
+name = "server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-stream = "0.3"
+anyhow.workspace = true
+axum.workspace = true
+chrono.workspace = true
+domain.workspace = true
+dotenvy.workspace = true
+execution = { path = "../execution" }
+merchant-demo = { path = "../merchant-demo" }
+monitoring = { path = "../monitoring" }
+product-intelligence = { path = "../product-intelligence" }
+futures-core = "0.3"
+persistence = { path = "../persistence" }
+rule-engine = { path = "../rule-engine" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+tower = { version = "0.5", features = ["util"] }

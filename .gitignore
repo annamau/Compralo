@@ -6,3 +6,7 @@ dist/
 build/
 .DS_Store
 *.log
+/target
+*.db
+*.db-shm
+*.db-wal

@@ -20,16 +20,16 @@ export const PROVIDER: Provider =
 
 export const ANTHROPIC_MODEL = "claude-opus-5";
 
-// Free models, chosen for structured output that holds. Both are reasoning models: the
-// reasoning tokens land in completion_tokens and the content is the JSON alone.
-export const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? "nex-agi/nex-n2.5-pro:free";
-export const OPENROUTER_MODEL_FALLBACK = process.env.OPENROUTER_MODEL_FALLBACK ?? "nvidia/nemotron-3-super-120b-a12b:free";
+// Use Luna by default. Optional fallback must be configured explicitly so a demo
+// does not silently switch back to a rate-limited free model.
+export const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? "openai/gpt-5.6-luna";
+export const OPENROUTER_MODEL_FALLBACK = process.env.OPENROUTER_MODEL_FALLBACK ?? "";
 export const OPENROUTER_BASE_URL = (process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1").replace(/\/+$/, "");
 
 /** The model string shown at boot, on /health and on the dashboard. */
 export const MODEL_LABEL =
   PROVIDER === "anthropic" ? ANTHROPIC_MODEL
-  : PROVIDER === "openrouter" ? `${OPENROUTER_MODEL} (free)`
+  : PROVIDER === "openrouter" ? OPENROUTER_MODEL
   : "none";
 
 export type UsageLine = {
@@ -181,7 +181,7 @@ async function structuredOpenRouter<T>(o: StructuredOpts<T>): Promise<Structured
   // Images have no place to go on a text-only free model; drop them and say so once.
   const parts = typeof o.user === "string" ? [{ text: o.user }] : o.user;
   const dropped = parts.filter((p) => "image" in p).length;
-  if (dropped) console.warn(`[llm/${o.name}] openrouter: ${dropped} image(s) dropped — free text models take no vision input`);
+  if (dropped) console.warn(`[llm/${o.name}] openrouter: ${dropped} image(s) dropped — this OpenRouter adapter currently uses text input`);
   const userText = parts.filter((p): p is { text: string } => "text" in p).map((p) => p.text).join("\n\n");
 
   const jsonSchema = z.toJSONSchema(o.schema as z.ZodType<object>, { target: "draft-7" }) as Record<string, unknown>;

@@ -51,3 +51,7 @@ The harness calls real AI, authorizes test funds, changes the **local** fixture 
 ## Branch validation
 
 Before publishing: `cargo test --workspace --locked`, backend TypeScript typecheck, extension/test JavaScript syntax checks, Compose configuration validation, AI and demo-store Docker builds passed. Container checks confirmed OpenRouter selection, `/usage` HTTP 200, `/understand` input validation, and the demo-store out-of-stock → in-stock transition. The AI image contains no backend `.env` or local probe. These checks do not substitute for the pending cloud purchase acceptance test.
+
+## Luna configuration
+
+Set `OPENROUTER_MODEL=openai/gpt-5.6-luna` with the new separately shared OpenRouter key. Keep `OPENROUTER_MODEL_FALLBACK` empty. This branch forwards both model settings into the AI container. Local extraction with Luna passed on 2026-09-12 in 3.8 seconds, with the correct PS5 product, €248 price, stock and variants. `/usage` must report Luna after redeploy; the old free-model label means the change is not active yet.

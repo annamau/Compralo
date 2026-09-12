@@ -155,7 +155,9 @@ impl Store {
         Ok(())
     }
 
-    pub async fn expire_due_monitors(&self, now: DateTime<Utc>) -> Result<u64, StoreError> {
+    /// Expire everything past its deadline. Returns the monitors that moved, so the caller can
+    /// release their committed funds — every terminal state gives the money back.
+    pub async fn expire_due_monitors(&self, now: DateTime<Utc>) -> Result<Vec<Uuid>, StoreError> {
         let mut tx = self.pool.begin().await?;
         let ids: Vec<String> = sqlx::query_scalar(
             "SELECT id FROM monitors WHERE deadline<=? AND status IN ('active','evaluating','failed')",
@@ -163,6 +165,7 @@ impl Store {
         .bind(now)
         .fetch_all(&mut *tx)
         .await?;
+        let mut expired = Vec::with_capacity(ids.len());
         for raw_id in &ids {
             sqlx::query("UPDATE monitors SET status='expired', updated_at=? WHERE id=?")
                 .bind(now)
@@ -173,16 +176,12 @@ impl Store {
                 .bind(raw_id)
                 .execute(&mut *tx)
                 .await?;
-            append_event_tx(
-                &mut tx,
-                parse_uuid(raw_id.clone())?,
-                "monitor_expired",
-                serde_json::json!({}),
-            )
-            .await?;
+            let id = parse_uuid(raw_id.clone())?;
+            append_event_tx(&mut tx, id, "monitor_expired", serde_json::json!({})).await?;
+            expired.push(id);
         }
         tx.commit().await?;
-        Ok(ids.len() as u64)
+        Ok(expired)
     }
 
     pub async fn append_event(
@@ -238,13 +237,71 @@ impl Store {
         maximum_minor: i64,
         currency: &str,
     ) -> Result<Uuid, StoreError> {
+        self.create_payment_authorization_with_reference(
+            monitor_id,
+            None,
+            maximum_minor,
+            currency,
+            false,
+        )
+        .await
+        .map(|(id, _)| id)
+    }
+
+    /// Record the mandate hold. `provider_reference` is the payment provider's own handle — P4's
+    /// Stripe `hold_id` once the money service is wired, and a local `demo-` stand-in otherwise.
+    /// Returns the authorization id and the reference actually stored.
+    ///
+    /// `needs_attention` means the hold exists but 3DS did not finish, so it cannot be captured
+    /// yet. The monitor is parked in `payment_required`, which also stops the checker claiming it
+    /// (`claim_due_job` only leases `active` monitors) until the user confirms in the panel.
+    pub async fn create_payment_authorization_with_reference(
+        &self,
+        monitor_id: Uuid,
+        provider_reference: Option<&str>,
+        maximum_minor: i64,
+        currency: &str,
+        needs_attention: bool,
+    ) -> Result<(Uuid, String), StoreError> {
         self.get_monitor(monitor_id).await?;
         let id = Uuid::new_v4();
+        let reference = provider_reference
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("demo-{id}"));
+        let mut tx = self.pool.begin().await?;
         sqlx::query("INSERT INTO payment_authorizations (id,monitor_id,provider_reference,maximum_minor,currency,status,created_at) VALUES (?,?,?,?,?,'authorized',?)")
-            .bind(id.to_string()).bind(monitor_id.to_string()).bind(format!("demo-{id}"))
-            .bind(maximum_minor).bind(currency).bind(Utc::now()).execute(&self.pool).await?;
-        self.append_event(monitor_id, "payment_authorized", serde_json::json!({"authorization_id": id, "maximum_minor": maximum_minor, "currency": currency})).await?;
-        Ok(id)
+            .bind(id.to_string()).bind(monitor_id.to_string()).bind(&reference)
+            .bind(maximum_minor).bind(currency).bind(Utc::now()).execute(&mut *tx).await?;
+        append_event_tx(
+            &mut tx,
+            monitor_id,
+            "payment_authorized",
+            serde_json::json!({
+                "authorization_id": id,
+                "maximum_minor": maximum_minor,
+                "currency": currency,
+                "provider_reference": reference,
+                "status": if needs_attention { "needs_attention" } else { "committed" },
+            }),
+        )
+        .await?;
+        if needs_attention {
+            sqlx::query("UPDATE monitors SET status='payment_required', updated_at=? WHERE id=? AND status IN ('active','evaluating')")
+                .bind(Utc::now()).bind(monitor_id.to_string()).execute(&mut *tx).await?;
+            append_event_tx(
+                &mut tx,
+                monitor_id,
+                "payment_required",
+                serde_json::json!({
+                    "authorization_id": id,
+                    "provider_reference": reference,
+                    "error": "the bank asked the user to confirm this hold before it can be used",
+                }),
+            )
+            .await?;
+        }
+        tx.commit().await?;
+        Ok((id, reference))
     }
 
     pub async fn has_valid_payment_authorization(

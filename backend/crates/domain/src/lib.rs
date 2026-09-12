@@ -51,8 +51,13 @@ impl MonitorStatus {
         use MonitorStatus::*;
         matches!(
             (self, next),
-            (Active, Evaluating | Expired | Cancelled)
-                | (Evaluating, Active | Executing | Expired | Cancelled)
+            // Active/Evaluating -> PaymentRequired: the mandate hold came back needing 3DS, so
+            // there is nothing to spend and the checker must stop before it finds an offer.
+            (Active, Evaluating | PaymentRequired | Expired | Cancelled)
+                | (
+                    Evaluating,
+                    Active | Executing | PaymentRequired | Expired | Cancelled
+                )
                 | (Executing, Purchased | Active | PaymentRequired | Failed)
                 | (PaymentRequired, Active | Cancelled | Expired)
                 | (Failed, Active | Cancelled)

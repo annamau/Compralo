@@ -1,0 +1,69 @@
+{
+  "_placeholder": "P2 lo creó para desbloquearse. Dueño real: P3 (T+2:45). Sobrescríbelo en su sitio; no lo dupliques.",
+  "instruction_id": "inst_demo_ps5",
+  "mandate_max_total_cents": 25000,
+  "offers": [
+    {
+      "offer_id": "off_1",
+      "candidate_id": "cand_amazon_ps5slim",
+      "retailer": "amazon",
+      "url": "https://www.amazon.es/dp/B0CL61F39H",
+      "price_cents": 21900,
+      "shipping_cents": 0,
+      "total_cents": 21900,
+      "currency": "EUR",
+      "seller": "Amazon ES",
+      "condition": "new",
+      "expected_verdict": "REJECTED",
+      "expected_reason": "Generación anterior — este anuncio es el modelo previo bajo un título casi idéntico"
+    },
+    {
+      "offer_id": "off_2",
+      "candidate_id": "cand_mediamarkt_ps5slim",
+      "retailer": "mediamarkt",
+      "url": "https://www.mediamarkt.es/es/product/_ps5-slim-digital-1489234.html",
+      "price_cents": 24400,
+      "shipping_cents": 3800,
+      "total_cents": 28200,
+      "currency": "EUR",
+      "seller": "MediaMarkt",
+      "condition": "new",
+      "expected_verdict": "REJECTED",
+      "expected_reason": "Add-on obligatorio en el checkout — el total real puesto en casa es 282,00 €"
+    },
+    {
+      "offer_id": "off_3",
+      "candidate_id": "cand_pccomponentes_ps5slim",
+      "retailer": "pccomponentes",
+      "url": "https://www.pccomponentes.com/sony-playstation-5-slim-digital-1tb",
+      "price_cents": 24800,
+      "shipping_cents": 0,
+      "total_cents": 24800,
+      "currency": "EUR",
+      "seller": "PcComponentes",
+      "condition": "new",
+      "expected_verdict": "QUALIFIES",
+      "expected_reason": "Variante correcta, vendedor aprobado, 248,00 € puesto en casa dentro del techo"
+    },
+    {
+      "offer_id": "off_4",
+      "candidate_id": "cand_carrefour_ps5slim",
+      "retailer": "carrefour",
+      "url": "https://www.carrefour.es/videojuegos/consola-sony-playstation-5-slim-digital/",
+      "price_cents": 46500,
+      "shipping_cents": 0,
+      "total_cents": 46500,
+      "currency": "EUR",
+      "seller": "Carrefour",
+      "condition": "new",
+      "expected_verdict": "QUALIFIES",
+      "expected_reason": "Mismo producto, vendedor aprobado — 465,00 € puesto en casa",
+      "expected_checkout": {
+        "status": "DECLINED",
+        "decline_reason": "amount_too_large",
+        "enforced_by": "stripe",
+        "note": "Existe SOLO para que lo rechace la capa de pago. Ningún if de aplicación debe adelantarse a Stripe."
+      }
+    }
+  ]
+}

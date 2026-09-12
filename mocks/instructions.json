@@ -1,0 +1,253 @@
+{
+  "_placeholder": "P2 lo creó para desbloquearse. Dueño real: P1 (T+0:15). Sobrescríbelo en su sitio; no lo dupliques.",
+  "_shape": "`instructions` es literalmente la respuesta de GET /instructions. `details` es un mapa aditivo id → respuesta de GET /instructions/:id, para que un cliente en modo mock pueda servir ambos endpoints desde un solo fichero.",
+
+  "instructions": [
+    {
+      "id": "inst_demo_ps5",
+      "canonical": {
+        "name": "PlayStation 5 Slim Digital Edition 1TB",
+        "brand": "Sony",
+        "model": "CFI-2016B",
+        "generation": "PS5 Slim",
+        "category": "consolas"
+      },
+      "status": "PURCHASED",
+      "max_total_cents": 25000,
+      "deadline": "2026-09-19T10:00:00Z",
+      "last_checked_at": "2026-09-12T09:41:12Z"
+    },
+    {
+      "id": "inst_demo_monitor",
+      "canonical": {
+        "name": "LG UltraGear 27GP850 27 pulgadas QHD 180Hz",
+        "brand": "LG",
+        "model": "27GP850-B",
+        "category": "monitores"
+      },
+      "status": "AWAITING_APPROVAL",
+      "max_total_cents": 32000,
+      "deadline": "2026-09-17T18:00:00Z",
+      "last_checked_at": "2026-09-12T09:38:02Z"
+    },
+    {
+      "id": "inst_demo_lego",
+      "canonical": {
+        "name": "LEGO Icons Bonsai Tree 10281",
+        "brand": "LEGO",
+        "model": "10281",
+        "category": "juguetes"
+      },
+      "status": "EVALUATING",
+      "max_total_cents": 4500,
+      "deadline": "2026-09-16T08:00:00Z",
+      "last_checked_at": "2026-09-12T09:40:55Z"
+    },
+    {
+      "id": "inst_demo_airpods",
+      "canonical": {
+        "name": "Apple AirPods Pro 2 USB-C",
+        "brand": "Apple",
+        "model": "MTJV3",
+        "category": "audio"
+      },
+      "status": "ARMED",
+      "max_total_cents": 21000,
+      "deadline": "2026-09-18T12:00:00Z",
+      "last_checked_at": null
+    }
+  ],
+
+  "details": {
+    "inst_demo_ps5": {
+      "id": "inst_demo_ps5",
+      "status": "PURCHASED",
+      "canonical": {
+        "name": "PlayStation 5 Slim Digital Edition 1TB",
+        "brand": "Sony",
+        "model": "CFI-2016B",
+        "generation": "PS5 Slim",
+        "category": "consolas",
+        "identifiers": { "ean": "0711719577294", "mpn": "CFI-2016B" }
+      },
+      "mandate": {
+        "max_total_cents": 25000,
+        "currency": "EUR",
+        "deadline": "2026-09-19T10:00:00Z",
+        "quantity": 1,
+        "retailers": ["amazon", "mediamarkt", "pccomponentes", "carrefour"],
+        "constraints": {
+          "edition": "digital",
+          "condition": "new",
+          "bundle_game_included": false,
+          "min_warranty_months": 24,
+          "max_shipping_cents": 999
+        }
+      },
+      "funds": {
+        "hold_id": "pi_3QdemoPS5hold",
+        "committed_cents": 25000,
+        "currency": "EUR",
+        "expires": "2026-09-19T10:00:00Z",
+        "status": "spent"
+      },
+      "offers": [
+        {
+          "offer_id": "off_1",
+          "retailer": "amazon",
+          "total_cents": 21900,
+          "verdict": "REJECTED",
+          "reason": "Generación anterior — este anuncio es el modelo previo bajo un título casi idéntico",
+          "at": "2026-09-12T09:12:40Z"
+        },
+        {
+          "offer_id": "off_2",
+          "retailer": "mediamarkt",
+          "total_cents": 28200,
+          "verdict": "REJECTED",
+          "reason": "Add-on obligatorio en el checkout — el total real puesto en casa es 282,00 €",
+          "at": "2026-09-12T09:24:07Z"
+        },
+        {
+          "offer_id": "off_4",
+          "retailer": "carrefour",
+          "total_cents": 46500,
+          "verdict": "QUALIFIES",
+          "reason": "Mismo producto, vendedor aprobado — 465,00 € puesto en casa",
+          "at": "2026-09-12T09:33:19Z"
+        },
+        {
+          "offer_id": "off_3",
+          "retailer": "pccomponentes",
+          "total_cents": 24800,
+          "verdict": "QUALIFIES",
+          "reason": "Variante correcta, vendedor aprobado, 248,00 € puesto en casa dentro del techo",
+          "at": "2026-09-12T09:41:12Z"
+        }
+      ],
+      "last_checkout_attempt": {
+        "offer_id": "off_4",
+        "retailer": "carrefour",
+        "attempted_cents": 46500,
+        "status": "DECLINED",
+        "decline_reason": "amount_too_large",
+        "enforced_by": "stripe",
+        "message": "Capture amount exceeds authorized mandate hold",
+        "at": "2026-09-12T09:33:21Z"
+      },
+      "purchase": {
+        "total_cents": 24800,
+        "retailer": "pccomponentes",
+        "order_ref": "ch_3QdemoPS5capture",
+        "at": "2026-09-12T09:41:14Z"
+      }
+    },
+
+    "inst_demo_monitor": {
+      "id": "inst_demo_monitor",
+      "status": "AWAITING_APPROVAL",
+      "canonical": {
+        "name": "LG UltraGear 27GP850 27 pulgadas QHD 180Hz",
+        "brand": "LG",
+        "model": "27GP850-B",
+        "category": "monitores"
+      },
+      "mandate": {
+        "max_total_cents": 32000,
+        "currency": "EUR",
+        "deadline": "2026-09-17T18:00:00Z",
+        "quantity": 1,
+        "retailers": ["amazon", "pccomponentes"],
+        "constraints": { "condition": "new", "panel": "ips" }
+      },
+      "funds": {
+        "hold_id": "pi_3QdemoMONhold",
+        "committed_cents": 32000,
+        "currency": "EUR",
+        "expires": "2026-09-17T18:00:00Z",
+        "status": "committed"
+      },
+      "offers": [
+        {
+          "offer_id": "off_mon_1",
+          "retailer": "amazon",
+          "total_cents": 34900,
+          "verdict": "REJECTED",
+          "reason": "Supera el techo: 349,00 € puesto en casa frente a un máximo de 320,00 €",
+          "at": "2026-09-12T09:20:00Z"
+        }
+      ],
+      "pending_alternative": {
+        "candidate_id": "cand_pccomponentes_27gp950",
+        "offer_id": "off_mon_2",
+        "retailer": "pccomponentes",
+        "total_cents": 33900,
+        "delta_cents": 1900,
+        "what_changes": "27GP950 4K en lugar del 27GP850 QHD — mismo panel Nano IPS y misma garantía, 19,00 € por encima de tu techo"
+      }
+    },
+
+    "inst_demo_lego": {
+      "id": "inst_demo_lego",
+      "status": "EVALUATING",
+      "canonical": {
+        "name": "LEGO Icons Bonsai Tree 10281",
+        "brand": "LEGO",
+        "model": "10281",
+        "category": "juguetes"
+      },
+      "mandate": {
+        "max_total_cents": 4500,
+        "currency": "EUR",
+        "deadline": "2026-09-16T08:00:00Z",
+        "quantity": 1,
+        "retailers": ["amazon", "elcorteingles"],
+        "constraints": { "condition": "new" }
+      },
+      "funds": {
+        "hold_id": "pi_3QdemoLEGOhold",
+        "committed_cents": 4500,
+        "currency": "EUR",
+        "expires": "2026-09-16T08:00:00Z",
+        "status": "committed"
+      },
+      "offers": [
+        {
+          "offer_id": "off_lego_1",
+          "retailer": "elcorteingles",
+          "total_cents": 5299,
+          "verdict": "REJECTED",
+          "reason": "Supera el techo: 52,99 € puesto en casa frente a un máximo de 45,00 €",
+          "at": "2026-09-12T09:40:55Z"
+        }
+      ]
+    },
+
+    "inst_demo_airpods": {
+      "id": "inst_demo_airpods",
+      "status": "ARMED",
+      "canonical": {
+        "name": "Apple AirPods Pro 2 USB-C",
+        "brand": "Apple",
+        "model": "MTJV3",
+        "category": "audio"
+      },
+      "mandate": {
+        "max_total_cents": 21000,
+        "currency": "EUR",
+        "deadline": "2026-09-18T12:00:00Z",
+        "quantity": 1,
+        "retailers": ["amazon", "mediamarkt"],
+        "constraints": { "condition": "new" }
+      },
+      "funds": {
+        "hold_id": "pi_3QdemoAIRhold",
+        "committed_cents": 21000,
+        "currency": "EUR",
+        "expires": "2026-09-18T12:00:00Z",
+        "status": "committed"
+      },
+      "offers": []
+    }
+  }
+}

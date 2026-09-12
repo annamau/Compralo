@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    /* El side panel de Chrome ronda los 320-400 px: todo a una columna. */
+    @apply min-w-panel bg-ink-900 text-slate-100 antialiased;
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      Roboto,
+      sans-serif;
+    font-size: 13px;
+    margin: 0;
+  }
+
+  /* Tipografía tabular para importes: los céntimos no deben bailar al refrescar. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-ink-500;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-ink-600 bg-ink-800 p-3;
+  }
+
+  .label {
+    @apply text-[11px] font-medium uppercase tracking-wide text-slate-400;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-ink-500 bg-ink-700 px-3 py-2 text-sm text-slate-100
+      placeholder:text-slate-500 focus:border-mint-500 focus:outline-none focus:ring-1 focus:ring-mint-500;
+  }
+
+  .btn-primary {
+    @apply w-full rounded-lg bg-mint-500 px-3 py-2.5 text-sm font-semibold text-ink-900
+      transition hover:bg-mint-400 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-ghost {
+    @apply rounded-lg border border-ink-500 px-3 py-2 text-sm text-slate-300
+      transition hover:border-ink-500 hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  /* Barrido del esqueleto. Fase 1 del skeleton: se ve antes de los 200 ms. */
+  .shimmer {
+    @apply relative overflow-hidden bg-ink-700;
+  }
+
+  .shimmer::after {
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    content: '';
+    background-image: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0,
+      rgba(255, 255, 255, 0.06) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer::after {
+    animation: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

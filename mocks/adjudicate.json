@@ -1,0 +1,18 @@
+{
+  "_placeholder": "P2 lo creó para desbloquearse. Dueño real: P3 (T+0:20). Sobrescríbelo en su sitio; no lo dupliques.",
+  "verdict": "REJECTED",
+  "reason": "Generación anterior — este anuncio es el modelo previo, no la Slim",
+  "resolved": {
+    "is_same_product": false,
+    "true_total_cents": 21900,
+    "hidden_costs": [],
+    "condition": "new",
+    "seller_ok": true
+  },
+  "alternative": {
+    "is_credible_substitute": false,
+    "delta_cents": -2900,
+    "what_changes": "PS5 estándar de generación anterior, no la Slim"
+  },
+  "confidence": 0.88
+}

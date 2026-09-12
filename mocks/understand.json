@@ -1,0 +1,69 @@
+{
+  "_placeholder": "P2 lo creó para desbloquearse. Dueño real: P3 (T+0:20). Sobrescríbelo en su sitio; no lo dupliques.",
+  "canonical": {
+    "name": "PlayStation 5 Slim Digital Edition 1TB",
+    "brand": "Sony",
+    "model": "CFI-2016B",
+    "generation": "PS5 Slim",
+    "category": "consolas",
+    "variant_axes": {
+      "storage": "1TB",
+      "edition": "digital",
+      "color": "blanco"
+    },
+    "identifiers": {
+      "ean": "0711719577294",
+      "mpn": "CFI-2016B"
+    }
+  },
+  "listing": {
+    "retailer": "amazon",
+    "price_cents": 39999,
+    "shipping_cents": 0,
+    "total_cents": 39999,
+    "currency": "EUR",
+    "condition": "new",
+    "seller_type": "retailer"
+  },
+  "constraint_schema": [
+    {
+      "key": "edition",
+      "label": "Edición",
+      "type": "enum",
+      "options": ["digital", "standard"],
+      "default": "digital"
+    },
+    {
+      "key": "condition",
+      "label": "Estado",
+      "type": "enum",
+      "options": ["new", "refurbished", "used"],
+      "default": "new"
+    },
+    {
+      "key": "bundle_game_included",
+      "label": "Incluye juego",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "key": "min_warranty_months",
+      "label": "Garantía mínima (meses)",
+      "type": "int",
+      "default": 24
+    },
+    {
+      "key": "max_shipping_cents",
+      "label": "Envío máximo aceptable",
+      "type": "money",
+      "default": 999
+    },
+    {
+      "key": "available_before",
+      "label": "Disponible antes de",
+      "type": "date",
+      "default": null
+    }
+  ],
+  "confidence": 0.91
+}

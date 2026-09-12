@@ -1,0 +1,37 @@
+{
+  "_placeholder": "P2 lo creó para desbloquearse. Dueño real: P3 (T+0:20). Sobrescríbelo en su sitio; no lo dupliques.",
+  "candidates": [
+    {
+      "candidate_id": "cand_amazon_ps5slim",
+      "retailer": "amazon",
+      "url": "https://www.amazon.es/dp/B0CL61F39H",
+      "ean": "0711719577294",
+      "mpn": "CFI-2016B",
+      "match_confidence": 1.0,
+      "why": "same EAN"
+    },
+    {
+      "candidate_id": "cand_mediamarkt_ps5slim",
+      "retailer": "mediamarkt",
+      "url": "https://www.mediamarkt.es/es/product/_ps5-slim-digital-1489234.html",
+      "ean": "0711719577294",
+      "match_confidence": 1.0,
+      "why": "same EAN"
+    },
+    {
+      "candidate_id": "cand_pccomponentes_ps5slim",
+      "retailer": "pccomponentes",
+      "url": "https://www.pccomponentes.com/sony-playstation-5-slim-digital-1tb",
+      "mpn": "CFI-2016B",
+      "match_confidence": 0.94,
+      "why": "title+spec match"
+    },
+    {
+      "candidate_id": "cand_carrefour_ps5slim",
+      "retailer": "carrefour",
+      "url": "https://www.carrefour.es/videojuegos/consola-sony-playstation-5-slim-digital/",
+      "match_confidence": 0.78,
+      "why": "title+spec match"
+    }
+  ]
+}

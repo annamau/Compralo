@@ -1,0 +1,19 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: compralo-api:latest
+    restart: unless-stopped
+    environment:
+      BIND_ADDR: 0.0.0.0:8080
+      DATABASE_URL: sqlite:///data/buy-agent.sqlite?mode=rwc
+      RUST_LOG: ${RUST_LOG:-server=info,tower_http=info}
+      SPIDER_CLOUD_API_KEY: ${SPIDER_CLOUD_API_KEY:?SPIDER_CLOUD_API_KEY is required}
+    ports:
+      - "8080:8080"
+    volumes:
+      - compralo-data:/data
+
+volumes:
+  compralo-data:

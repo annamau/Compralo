@@ -30,6 +30,8 @@ if (!KEY?.startsWith('sk_test_')) {
   process.exit(1)
 }
 const MARKET_URL = process.env.MARKET_URL ?? 'http://localhost:4000'
+// Explicit fixture hosts for end-to-end sandbox tests; provider keys are test-only.
+const SANDBOX_RETAILERS = (process.env.SANDBOX_RETAILERS ?? '').split(',').map(s => s.trim()).filter(Boolean)
 
 const stripe = new Stripe(KEY)
 const app = express()
@@ -239,7 +241,7 @@ app.get('/purchases/:idempotency_key', (req, res) => {
 })
 
 // GET /coverage — where we can actually buy. P1 filters against it; P3 ranks by it.
-app.get('/coverage', (_, res) => res.json({ retailers: zinc.COVERAGE, market: ['store-a', 'store-b', 'store-c'] }))
+app.get('/coverage', (_, res) => res.json({ retailers: [...zinc.COVERAGE, ...SANDBOX_RETAILERS], sandbox_retailers: SANDBOX_RETAILERS, market: ['store-a', 'store-b', 'store-c'] }))
 
 // Stripe's failure -> the four statuses in CONTRACTS.md.
 // `decline_reason` is Stripe's own code, verbatim. It goes on screen unedited —

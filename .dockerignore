@@ -11,3 +11,6 @@ Dockerfile*
 compose*.yaml
 API.md
 deploy
+
+# Local credentials and private test artifacts
+private-handoff

@@ -1,0 +1,4 @@
+**
+!tests/
+!tests/restock/
+!tests/restock/store.mjs

@@ -20,3 +20,6 @@ data
 **/*.db-shm
 **/*.db-wal
 **/.DS_Store
+
+# Local credentials and private test artifacts
+private-handoff

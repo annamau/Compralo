@@ -56,6 +56,8 @@ pub enum MonitoringError {
     ResponseTooLarge { limit: usize, actual: usize },
     #[error("fetch timed out")]
     Timeout,
+    #[error("product page returned HTTP {0}")]
+    HttpStatus(u16),
     #[error("extraction failed: {0}")]
     Extraction(String),
 }
@@ -189,10 +191,20 @@ impl SpiderFetcher {
             .acquire()
             .await
             .expect("semaphore is never closed");
-        self.fetch_with_spider(url).await
+        // Fetch locally first. Configuring Spider Cloud on the initial request can
+        // return a provider response rather than the retailer's HTML.
+        let direct = self.fetch_with_spider(url, false).await;
+        if direct.is_ok() || self.config.spider_cloud_api_key.is_none() {
+            return direct;
+        }
+        self.fetch_with_spider(url, true).await
     }
 
-    async fn fetch_with_spider(&self, url: &Url) -> Result<FetchedPage, MonitoringError> {
+    async fn fetch_with_spider(
+        &self,
+        url: &Url,
+        cloud_fallback: bool,
+    ) -> Result<FetchedPage, MonitoringError> {
         let mut website = Website::new_with_firewall(url.as_str(), true);
         website
             .with_limit(1)
@@ -204,7 +216,12 @@ impl SpiderFetcher {
             .with_request_timeout(Some(self.config.request_timeout))
             .with_crawl_timeout(Some(self.config.crawl_timeout))
             .with_user_agent(Some(&self.config.user_agent));
-        if let Some(api_key) = self.config.spider_cloud_api_key.as_deref() {
+        if let Some(api_key) = self
+            .config
+            .spider_cloud_api_key
+            .as_deref()
+            .filter(|_| cloud_fallback)
+        {
             website.with_spider_cloud_config(
                 SpiderCloudConfig::new(api_key)
                     .with_mode(SpiderCloudMode::Fallback)
@@ -219,6 +236,12 @@ impl SpiderFetcher {
             .try_recv()
             .map_err(|_| MonitoringError::MissingPage)?;
         let html = String::from_utf8_lossy(page.get_html_bytes_u8()).into_owned();
+        if !page.status_code.is_success() {
+            return Err(MonitoringError::HttpStatus(page.status_code.as_u16()));
+        }
+        if html.trim().is_empty() {
+            return Err(MonitoringError::MissingPage);
+        }
         if html.len() > self.config.max_response_bytes {
             return Err(MonitoringError::ResponseTooLarge {
                 limit: self.config.max_response_bytes,

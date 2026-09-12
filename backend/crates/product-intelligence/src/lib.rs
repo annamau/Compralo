@@ -273,10 +273,38 @@ fn product_from_json_ld(product: &Value, page: &FetchedPage) -> Option<Normalize
         total_minor,
         currency,
         condition,
-        variants: HashMap::new(),
+        variants: extract_variants(product),
         source_url: page.final_url.clone(),
         checked_at: page.fetched_at,
     })
+}
+
+// Read explicit variant facts without inventing values when the page omits them.
+fn extract_variants(product: &Value) -> HashMap<String, String> {
+    let mut variants = HashMap::new();
+    if let Some(properties) = product.get("additionalProperty") {
+        let values = match properties {
+            Value::Array(a) => a.iter().collect::<Vec<_>>(),
+            other => vec![other],
+        };
+        for property in values {
+            if let (Some(name), Some(value)) = (
+                property.get("name").and_then(Value::as_str),
+                property.get("value").and_then(Value::as_str),
+            ) {
+                variants.insert(
+                    name.trim().to_lowercase().replace(' ', "_"),
+                    value.trim().to_lowercase(),
+                );
+            }
+        }
+    }
+    for key in ["color", "size", "material", "pattern"] {
+        if let Some(value) = product.get(key).and_then(Value::as_str) {
+            variants.insert(key.into(), value.trim().to_lowercase());
+        }
+    }
+    variants
 }
 
 fn first_object(value: &Value) -> Option<&Value> {
@@ -366,6 +394,21 @@ fn collect_metadata(document: &Html) -> HashMap<String, String> {
 mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
+
+    #[test]
+    fn reads_explicit_variants_without_inventing_missing_values() {
+        let data = serde_json::json!({"additionalProperty": [
+            {"name": "edition", "value": "Digital"},
+            {"name": "storage", "value": "1TB"},
+            {"name": "unknown"}
+        ], "color": "White"});
+        let variants = extract_variants(&data);
+        assert_eq!(variants.get("edition").map(String::as_str), Some("digital"));
+        assert_eq!(variants.get("storage").map(String::as_str), Some("1tb"));
+        assert_eq!(variants.get("color").map(String::as_str), Some("white"));
+        assert!(!variants.contains_key("unknown"));
+        assert!(extract_variants(&serde_json::json!({})).is_empty());
+    }
 
     fn page(html: &str) -> FetchedPage {
         let url = Url::parse("https://shop.example/products/ps5").unwrap();

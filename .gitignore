@@ -27,3 +27,6 @@ Thumbs.db
 # deploy/ — real keys live here and never in git (deploy/.env.example is the template)
 deploy/.env
 # DATABASE_URL defaults to buy-agent.sqlite, which is a dev artifact.
+
+# Private deployment handoffs containing test credentials
+/private-handoff/

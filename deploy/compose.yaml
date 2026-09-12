@@ -9,10 +9,10 @@
 # Only caddy publishes ports. Everything else is reachable by service name on the
 # private compose network, which is also why nothing here needs its own TLS.
 #
-#   /          -> backend:3000   dashboard, /instructions, /events/stream (SSE)
-#   /money/*   -> money:4242     /funds/commit, /checkout, /coverage
-#   /market/*  -> market:4000    the simulator's /offers, /admin/offers
-#   /core/*    -> core:8080      P1's Rust API, /v1/monitors
+#   /understand, /usage -> backend:3000 (AI only)
+#   /products/ps5-slim  -> demo-store:4011 (read-only sandbox fixture)
+#   all other API paths -> core:8080 (Rust)
+#   money:4242 stays internal to the Compose network.
 #
 # core listens on 8080, not 3000: that is what the repo-root Dockerfile sets as
 # BIND_ADDR and what its own HEALTHCHECK curls. Changing it means changing both.
@@ -46,6 +46,8 @@ services:
       # ZINC_API_KEY starts with zn_test_. Nobody buys for real today.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?set STRIPE_SECRET_KEY=sk_test_... in deploy/.env}
       ZINC_API_KEY: ${ZINC_API_KEY:?set ZINC_API_KEY=zn_test_... in deploy/.env}
+      MARKET_URL: http://market:4000
+      SANDBOX_RETAILERS: ${SANDBOX_RETAILERS:-}
     expose:
       - "4242"
 
@@ -63,9 +65,7 @@ services:
       - "4000"
 
   # ---- AutoBuy backend --------------------------------------------------------
-  # Runs a 3 s polling loop inside the process and mirrors state to /app/data on
-  # every change. It must stay warm and it must keep its disk: no scale-to-zero,
-  # no throttled CPU, one replica.
+  # AI extraction only; audit logs persist in /app/data. Rust owns monitoring.
   backend:
     build:
       context: ..
@@ -75,15 +75,14 @@ services:
     logging: *logging
     environment:
       PORT: "3000"
+      INTELLIGENCE_ONLY: "true"
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       MARKET_URL: http://market:4000
-      # Absent, the backend runs in fixtures mode and prints "AI: hardcoded".
+      # With neither provider key, AI falls back to fixtures (not demo-ready).
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      # Absent, the backend runs its Stripe stub and prints "Stripe: STUB".
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       # Absent, the Exa perception lane reports mode "off" and yields no offers.
       EXA_API_KEY: ${EXA_API_KEY:-}
-      # Where the hold/capture lane moves once the backend stops talking to Stripe
-      # directly. Wired here so the migration is a code change, not a deploy change.
+      # Used only by legacy routes; Caddy exposes only the AI routes.
       P4_URL: ${P4_URL:-http://money:4242}
       POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-3000}
       EXA_POLL_INTERVAL_MS: ${EXA_POLL_INTERVAL_MS:-60000}
@@ -109,6 +108,8 @@ services:
     logging: *logging
     environment:
       BIND_ADDR: 0.0.0.0:8080
+      MERCHANT: p4
+      P4_URL: http://money:4242
       DATABASE_URL: sqlite:///data/buy-agent.sqlite?mode=rwc
       RUST_LOG: ${RUST_LOG:-server=info,tower_http=info}
       SPIDER_CLOUD_API_KEY: ${SPIDER_CLOUD_API_KEY:?set SPIDER_CLOUD_API_KEY in deploy/.env}
@@ -116,6 +117,18 @@ services:
       - core-data:/data
     expose:
       - "8080"
+
+  # Read-only store for the hackathon restock demonstration.
+  demo-store:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.demo-store
+    restart: unless-stopped
+    logging: *logging
+    volumes:
+      - demo-store-data:/data
+    expose:
+      - "4011"
 
   # ---- edge -------------------------------------------------------------------
   # DOMAIN set   -> Caddy answers on that name and provisions a real certificate.
@@ -139,9 +152,11 @@ services:
       - money
       - market
       - core
+      - demo-store
 
 volumes:
   autobuy-data:
   core-data:
+  demo-store-data:
   caddy-data:
   caddy-config:

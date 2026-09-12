@@ -2,6 +2,8 @@ import "./env.js"; // must be first: loads .env before stripe.ts / ai.ts read pr
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { audit } from "./audit.js";
+import { MODEL_LABEL } from "./llm.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
@@ -18,6 +20,13 @@ import { money } from "./util.js";
 import type { CanonicalProduct, Constraints, Instruction } from "../../shared/types.js";
 
 const app = new Hono();
+app.use("*", async (c, next) => {
+  const started = Date.now();
+  const request_id = randomUUID();
+  c.header("X-Request-ID", request_id);
+  await next();
+  audit("http", { request_id, method: c.req.method, path: c.req.path, status: c.res.status, duration_ms: Date.now() - started });
+});
 app.use("*", cors());
 app.route("/", perception);   // POST /discover, POST /adjudicate — the Exa perception lane
 
@@ -31,9 +40,11 @@ app.post("/understand", async (c) => {
     const shot = typeof body.screenshot === "string" && body.screenshot.startsWith("data:image/") && body.screenshot.length < 6_000_000 ? body.screenshot : undefined;
     const r = await understand(body.url, body.html, body.title ?? "", shot);
     console.log(`[understand] ${r.mode}${r.source ? `/${r.source}` : ""} ${body.url.slice(0, 80)} → "${r.product.name}" ${r.product.listed_price ?? "?"} ${r.product.currency ?? ""} ${r.product.in_stock ? "in stock" : "out of stock"} (${r.controls.length} controls, ${Math.round(body.html.length / 1024)} KB html${shot ? `, ${Math.round(shot.length / 1024)} KB screenshot` : ""}, ${Date.now() - t0} ms${r.usage ? `, ${r.usage.input_tokens}+${r.usage.output_tokens} tokens, $${r.usage.usd.toFixed(4)}` : ""})`);
+    audit("ai_understand", { url: body.url, mode: r.mode, model: r.usage && "model" in r.usage ? r.usage.model : MODEL_LABEL, product: r.product, usage: r.usage, duration_ms: Date.now() - t0 });
     return c.json({ product: r.product, controls: r.controls, mode: r.mode, source: r.source ?? null, page_title: r.page_title ?? null, usage: r.usage ?? null });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    audit("ai_error", { url: body.url, error: msg, duration_ms: Date.now() - t0 });
     console.error(`[understand] failed after ${Date.now() - t0} ms: ${msg}`);
     return c.json({ error: msg }, 500);
   }
@@ -130,7 +141,7 @@ app.get("/events/stream", (c) =>
     let open = true;
     const unsubscribe = subscribe((e) => { void stream.writeSSE({ data: JSON.stringify(e), id: e.at }).catch(() => {}); });
     stream.onAbort(() => { open = false; unsubscribe(); });
-    await stream.writeSSE({ event: "hello", data: JSON.stringify({ instructions: state.instructions.size, events: state.events.length, ai: AI_MODE, stripe: STRIPE_MODE }) });
+    await stream.writeSSE({ event: "hello", data: JSON.stringify({ instructions: state.instructions.size, events: state.events.length, ai: AI_MODE, model: MODEL_LABEL, stripe: STRIPE_MODE }) });
     while (open) {
       await stream.sleep(15000);
       if (open) await stream.writeSSE({ event: "ping", data: String(Date.now()) }).catch(() => { open = false; });
@@ -142,19 +153,19 @@ app.get("/events/stream", (c) =>
 app.get("/", (c) => c.redirect("/dashboard"));
 app.get("/dashboard", (c) => c.html(readFileSync(resolve(BACKEND_DIR, "dashboard.html"), "utf8")));
 app.get("/retailers", async (c) => c.json(await fetchRetailers()));
-app.get("/usage", (c) => c.json({ ai: AI_MODE, stripe: STRIPE_MODE, money: MONEY_URL, ...state.usage, total_usd: Object.values(state.usage).reduce((sum, b) => sum + (b?.usd ?? 0), 0), normalise_cache: cacheSize() }));
-app.get("/health", (c) => c.json({ ok: true, ai: AI_MODE, stripe: STRIPE_MODE, money: MONEY_URL, market: MARKET_URL, instructions: state.instructions.size, events: state.events.length, sse_clients: subscriberCount() }));
+app.get("/usage", (c) => c.json({ ai: AI_MODE, model: MODEL_LABEL, stripe: STRIPE_MODE, money: MONEY_URL, ...state.usage, total_usd: Object.values(state.usage).reduce((sum, b) => sum + (b?.usd ?? 0), 0), normalise_cache: cacheSize() }));
+app.get("/health", (c) => c.json({ ok: true, ai: AI_MODE, model: MODEL_LABEL, stripe: STRIPE_MODE, money: MONEY_URL, market: MARKET_URL, instructions: state.instructions.size, events: state.events.length, sse_clients: subscriberCount() }));
 app.post("/admin/reset", (c) => { reset(); resetAiCache(); console.log("[admin] state reset: 0 instructions, 0 events, cache cleared"); return c.json({ ok: true }); });
 
 // ---- Boot -------------------------------------------------------------------------------------
 load();
 // No money service, no AutoBuy: this exits the process rather than discovering it at purchase time.
-await assertMoneyUp();
+if (process.env.INTELLIGENCE_ONLY !== "true") await assertMoneyUp();
 serve({ fetch: app.fetch, port: PORT }, () => {
   console.log(`AutoBuy backend  http://localhost:${PORT}   dashboard → http://localhost:${PORT}/dashboard`);
-  console.log(`AI:      ${AI_MODE === "claude" ? "claude-opus-5 (understand + normalise)" : "hardcoded fixtures — set ANTHROPIC_API_KEY in packages/backend/.env for real page understanding"}`);
+  console.log(`AI:      ${AI_MODE} · ${MODEL_LABEL}`);
   console.log(`Money:   P4 at ${P4_URL}`);
   console.log(`Market:  ${MARKET_URL}`);
-  startMonitor();
-  startExaMonitor();
+  if (process.env.INTELLIGENCE_ONLY !== "true") { startMonitor(); startExaMonitor(); }
+  else console.log("Intelligence only: orders, payment authorization and monitoring belong to the Rust API");
 });

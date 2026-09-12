@@ -1,0 +1,10 @@
+FROM node:22-alpine
+WORKDIR /app
+COPY tests/restock/store.mjs ./store.mjs
+RUN mkdir /data && chown node:node /data
+USER node
+ENV RESTOCK_HOST=0.0.0.0 RESTOCK_PORT=4011 RESTOCK_STATE=/data/restock.json RESTOCK_LOG=/data/requests.jsonl
+VOLUME ["/data"]
+EXPOSE 4011
+HEALTHCHECK --interval=30s --timeout=5s CMD node -e "fetch('http://127.0.0.1:4011/products/ps5-slim').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+CMD ["node", "store.mjs"]

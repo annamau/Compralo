@@ -437,7 +437,7 @@ impl Store {
             &mut tx,
             monitor_id,
             "purchase_confirmed",
-            serde_json::json!({"order_id": order_id}),
+            serde_json::json!({"order_id": order_id, "total_minor": total_minor, "currency": currency, "idempotency_key": idempotency_key}),
         )
         .await?;
         tx.commit().await?;

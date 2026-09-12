@@ -10,7 +10,7 @@ const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
 const status = (text, kind = "") => { const s = $("status"); s.className = `status ${kind}`; s.textContent = text; show("status", !!text); };
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
 
-let product = null, seq = 0, timer = null, lastReadUrl = "", lastReadAt = 0;
+let product = null, sourceUrl = "", seq = 0, timer = null, lastReadUrl = "", lastReadAt = 0;
 const retriedFor = new Set();
 
 async function activeTab() {
@@ -22,10 +22,10 @@ async function readPage(force = false) {
   const tab = await activeTab();
   if (!tab?.id) { status("No active tab.", "error"); return; }
   if (!force && tab.url && tab.url === lastReadUrl && Date.now() - lastReadAt < 4000) return; // same page, just read
-  if (tab.url && (tab.url.startsWith(API()) || !/^https?:/.test(tab.url))) {                    // our own dashboard, chrome://, new tab…
+  if (tab.url && !/^https?:/.test(tab.url)) {                    // our own dashboard, chrome://, new tab…
     lastReadUrl = tab.url; lastReadAt = Date.now();
     show("product", false); show("order", false); show("result", false);
-    status(tab.url.startsWith(API()) ? "This is the AutoBuy dashboard. Open a product page and the panel will read it." : "Open a product page (http or https) and the panel will read it.");
+    status("Open a product page (http or https) and the panel will read it.");
     return;
   }
   const my = ++seq;
@@ -41,13 +41,15 @@ async function readPage(force = false) {
     try { screenshot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 55 }); } catch (e) { console.warn("screenshot unavailable:", e?.message); }
     let res;
     try {
-      res = await fetch(`${API()}/understand`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...page, screenshot }) });
+      res = await fetch(`${await intelligenceUrl()}/understand`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...page, screenshot }) });
     } catch (e) { throw new Error(`${e.message} — is the backend running on ${API()}?`); }
     const text = await res.text();
     let body; try { body = JSON.parse(text); } catch { body = { error: text }; }
     if (!res.ok) throw new Error(`${res.status}: ${body.error ?? text}`);   // backend error, verbatim
     if (my !== seq) return;                                                 // a newer read superseded this one
     product = body.product;
+    sourceUrl = page.url;
+    await chrome.storage.local.set({ last_understanding: { at: new Date().toISOString(), url: page.url, mode: body.mode, usage: body.usage, product: body.product } });
     renderProduct(body, page, screenshot);
     await renderForm(body.controls ?? []);
     status("");
@@ -62,11 +64,11 @@ function renderProduct(body, page, screenshot) {
   const p = body.product;
   const ids = Object.entries(p.identifiers ?? {}).filter(([, v]) => v).map(([k, v]) => `${k.toUpperCase()} ${v}`).join(" · ");
   const price = p.listed_price != null ? `${Number(p.listed_price).toFixed(2)} ${p.currency ?? ""}` : "no price shown";
-  const how = body.mode === "claude"
-    ? `Read by claude-opus-5${body.usage ? ` · ${body.usage.input_tokens + body.usage.output_tokens} tokens · $${body.usage.usd.toFixed(3)}` : ""}`
+  const how = ["claude", "openrouter"].includes(body.mode)
+    ? `Read by ${body.usage?.model ?? body.mode}${body.usage ? ` · ${body.usage.input_tokens + body.usage.output_tokens} tokens · $${body.usage.usd.toFixed(3)}` : ""}`
     : body.mode === "extracted" ? `Read locally from ${body.source} — no ANTHROPIC_API_KEY, so no AI reading`
     : "Fixture — the page could not be read and the backend has no ANTHROPIC_API_KEY";
-  $("product").replaceChildren(
+  $("product").replaceChildren(...[
     screenshot ? el("img", { className: "shot", src: screenshot, alt: "what the agent saw", title: "Screenshot of the tab as it was read" }) : null,
     el("div", { className: "page", textContent: `${hostOf(page.url)} · ${page.title || page.url}` }),
     el("div", { className: "eyebrow", textContent: [p.brand, p.category].filter(Boolean).join(" · ") }),
@@ -75,7 +77,7 @@ function renderProduct(body, page, screenshot) {
     ids ? el("div", { className: "ids", textContent: ids }) : null,
     el("div", { className: "chips" }, ...Object.entries(p.attributes ?? {}).map(([k, v]) => el("span", { className: "chip", textContent: `${k}: ${v}` }))),
     el("div", { className: "mode", textContent: how }),
-  );
+  ].filter(Boolean));
   show("product");
 }
 
@@ -121,7 +123,7 @@ async function renderForm(controls) {
   $("controls").replaceChildren(...controls.filter((c) => !UNIVERSAL.has(String(c.key).toLowerCase())).map(renderControl));
   $("max_total").value = product.listed_price != null ? Math.ceil(Number(product.listed_price)) : "";
   $("currency").textContent = product.currency ?? "EUR";
-  const retailers = await fetch(`${API()}/retailers`).then((r) => r.json()).catch(() => ["store-a", "store-b", "store-c"]);
+  const retailers = [new URL(sourceUrl).hostname.replace(/^www\./, "")];
   $("retailers").replaceChildren(...retailers.map((r) => el("label", { className: "check" }, el("input", { type: "checkbox", value: r, checked: true }), el("span", { textContent: r }))));
   show("order");
 }
@@ -129,40 +131,54 @@ async function renderForm(controls) {
 $("order").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const btn = $("create"); btn.disabled = true; btn.textContent = "Authorising hold…";
-  const days = Number($("deadline_days").value || 30);
-  const constraints = {
-    max_total: Number($("max_total").value), currency: product.currency ?? "EUR", quantity: 1,
-    condition: $("condition").value,
-    approved_retailers: [...$("retailers").querySelectorAll("input:checked")].map((i) => i.value),
-    deadline: new Date(Date.now() + days * 864e5).toISOString(),
-    variant: readVariant(), allow_bundles: $("allow_bundles").checked,
-  };
+  const days = Number($("deadline_days").value || 7);
   try {
-    const res = await fetch(`${API()}/instructions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ product, constraints, payment_method: $("payment_method").value }) });
-    const text = await res.text();
-    let body; try { body = JSON.parse(text); } catch { body = { error: text }; }
-    if (!res.ok) throw new Error(`${res.status}: ${body.error ?? text}`);
-    status("");
-    renderResult(body);
-  } catch (e) {
-    status(String(e?.message ?? e), "error");
-  } finally {
-    btn.disabled = false; btn.textContent = "Create Buy Order";
-  }
+    const variants = readVariant();
+    if (Object.values(variants).some((v) => Array.isArray(v) && v.length !== 1)) throw new Error("Select one value per variant for this Rust monitor.");
+    const maxMinor = Math.round(Number($("max_total").value) * 100);
+    if (!Number.isSafeInteger(maxMinor) || maxMinor <= 0 || days < 1 || days > 7) throw new Error("Choose a positive ceiling and a deadline of 1–7 days.");
+    const payload = {
+      url: sourceUrl,
+      product: { name: product.name, brand: product.brand, model: product.identifiers?.model ?? null, identifiers: product.identifiers ?? {} },
+      constraints: { maximum_total_minor: maxMinor, currency: product.currency ?? "EUR", condition: $("condition").value === "any" ? null : $("condition").value,
+        approved_retailers: [...$("retailers").querySelectorAll("input:checked")].map((i) => i.value),
+        variants: Object.fromEntries(Object.entries(variants).map(([k,v]) => [k, Array.isArray(v) ? v[0] : String(v)])), bundles_allowed: $("allow_bundles").checked },
+      deadline: new Date(Date.now() + days * 864e5).toISOString(), check_interval_seconds: 10,
+    };
+    if (!payload.constraints.approved_retailers.length) throw new Error("Approve the retailer before creating a monitor.");
+    const monitor = await rustRequest("/v1/monitors", payload);
+    await chrome.storage.local.set({ last_monitor_id: monitor.id });
+    show("order", false);
+    try {
+      const auth = await rustRequest(`/v1/monitors/${monitor.id}/payment-authorizations`, { maximum_minor: maxMinor, currency: payload.constraints.currency });
+      await chrome.storage.local.set({ [`authorization_${monitor.id}`]: auth });
+      renderRustResult(monitor, auth);
+      status("");
+    } catch (e) {
+      renderRustResult(monitor, null);
+      status(`Rust monitor ${monitor.id} was created, but authorization failed: ${e.message}. Check its dashboard before retrying.`, "error");
+    }
+  } catch (e) { status(String(e?.message ?? e), "error"); }
+  finally { btn.disabled = false; btn.textContent = "Authorize and watch"; }
 });
 
-function renderResult(i) {
-  const ok = i.status === "ACTIVE";
-  const c = i.constraints;
+async function rustRequest(path, body) {
+  const response = await fetch(`${API()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+  const text = await response.text();
+  let data; try { data = JSON.parse(text); } catch { throw new Error(`Rust API ${response.status}: ${text || "empty response"}`); }
+  if (!response.ok) throw new Error(data.error ?? `Rust API ${response.status}`);
+  return data;
+}
+
+function renderRustResult(monitor, auth) {
+  const stripe = auth?.hold_id?.startsWith("pi_");
   $("result").replaceChildren(
-    el("span", { className: `pill ${ok ? "ok" : "warn"}`, textContent: i.status.replace("_", " ") }),
-    el("h1", { textContent: ok ? "Buy order is live" : "Needs your attention" }),
-    el("p", { textContent: ok
-      ? `Watching ${c.approved_retailers.join(", ")} for ${i.product.name} at ≤ ${c.max_total.toFixed(2)} ${c.currency} until ${c.deadline.slice(0, 10)}. You can quit Chrome — the agent keeps polling.`
-      : `The payment layer returned ${i.status === "NEEDS_ATTENTION" ? "requires_action (3DS challenge)" : i.status}. Nothing will be bought until it is resolved.` }),
-    el("div", { className: "ids", textContent: `instruction ${i.id}` }),
-    el("div", { className: "ids", textContent: `hold ${i.stripe_payment_intent ?? "—"}` }),
-    el("a", { className: "button", href: `${API()}/dashboard`, target: "_blank", rel: "noopener", textContent: "Open dashboard ↗" }),
+    el("span", { className: "pill ok", textContent: "Rust received monitor" }),
+    el("h1", { textContent: "Rust is watching this link" }),
+    el("p", { textContent: `${monitor.product.name} · ceiling ${(monitor.constraints.maximum_total_minor / 100).toFixed(2)} ${monitor.constraints.currency} · checks every ${monitor.check_interval_seconds} seconds` }),
+    el("p", { textContent: stripe ? `Stripe ${auth.status}: ${auth.hold_id}` : auth ? "Demo authorization recorded. This server has not returned a Stripe hold." : "Payment authorization is not confirmed." }),
+    el("div", { className: "ids", textContent: `monitor ${monitor.id}` }),
+    el("a", { className: "button", href: chrome.runtime.getURL("dashboard.html"), target: "_blank", rel: "noopener", textContent: "Open dashboard ↗" }),
   );
   show("result");
   $("result").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -173,14 +189,16 @@ async function initBackend() {
   API_BASE = await backendUrl();
   $("backend_url").value = API_BASE === DEFAULT_BACKEND_URL ? "" : API_BASE;
   $("backend_url").placeholder = DEFAULT_BACKEND_URL;
-  $("dash-link").href = `${API_BASE}/dashboard`;
+  $("intelligence_url").value = (await chrome.storage.sync.get("intelligence_url")).intelligence_url ?? "";
+  $("dash-link").href = chrome.runtime.getURL("dashboard.html");
   const known = KNOWN_BACKENDS.includes(API_BASE);
   $("backend_hint").textContent = known
     ? `Using ${API_BASE}.`
-    : `Using ${API_BASE} — not in manifest.json host_permissions, so fetches will fail silently until you add it there and reload the extension.`;
+    : `Using ${API_BASE}. This build permits HTTP and HTTPS backends.`;
 }
 $("save_backend").addEventListener("click", async () => {
   API_BASE = await setBackendUrl($("backend_url").value);
+  await chrome.storage.sync.set({ intelligence_url: $("intelligence_url").value.trim().replace(/\/+$/, "") });
   await initBackend();
   status(`Backend set to ${API_BASE}`, "");
   readPage(true);

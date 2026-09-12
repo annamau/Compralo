@@ -1,0 +1,91 @@
+{
+  "recorded_test": "Chrome AutoBuy -> AI -> Rust -> Stripe authorization -> URL restock -> Zinc purchase",
+  "environment": "Local services, actual Chrome extension, Stripe test and Zinc sandbox; not a cloud deployment pass",
+  "passed": true,
+  "monitor_id": "4b88cf88-fa3e-48ba-bbc6-ed06bd61eff0",
+  "created_at": "2026-09-12T12:50:53.522873Z",
+  "ai": {
+    "mode": "openrouter",
+    "model": "nex-agi/nex-n2.5-pro:free",
+    "usage": {
+      "input_tokens": 987,
+      "output_tokens": 735,
+      "cache_write_tokens": 0,
+      "cache_read_tokens": 0,
+      "usd": 0,
+      "model": "nex-agi/nex-n2.5-pro:free"
+    }
+  },
+  "stripe": {
+    "livemode": false,
+    "status": "succeeded",
+    "captured_minor": 24800,
+    "currency": "eur"
+  },
+  "zinc_status": "order_placed",
+  "purchase_count": 1,
+  "observations": [
+    {
+      "at": "2026-09-12T12:50:54.095Z",
+      "available": false,
+      "user_agent": "CompraloMonitor/0.1"
+    },
+    {
+      "at": "2026-09-12T12:51:04.525Z",
+      "available": false,
+      "user_agent": "CompraloMonitor/0.1"
+    },
+    {
+      "at": "2026-09-12T12:51:14.862Z",
+      "available": true,
+      "user_agent": "CompraloMonitor/0.1"
+    },
+    {
+      "at": "2026-09-12T12:51:15.385Z",
+      "available": true,
+      "user_agent": "CompraloMonitor/0.1"
+    }
+  ],
+  "event_sequence": [
+    {
+      "kind": "monitor_created",
+      "at": "2026-09-12T12:50:53.523759Z"
+    },
+    {
+      "kind": "offer_observed",
+      "at": "2026-09-12T12:50:54.261570Z"
+    },
+    {
+      "kind": "offer_evaluated",
+      "at": "2026-09-12T12:50:54.264156Z"
+    },
+    {
+      "kind": "payment_authorized",
+      "at": "2026-09-12T12:50:54.532823Z"
+    },
+    {
+      "kind": "offer_observed",
+      "at": "2026-09-12T12:51:04.583589Z"
+    },
+    {
+      "kind": "offer_evaluated",
+      "at": "2026-09-12T12:51:04.585945Z"
+    },
+    {
+      "kind": "offer_observed",
+      "at": "2026-09-12T12:51:14.987233Z"
+    },
+    {
+      "kind": "offer_evaluated",
+      "at": "2026-09-12T12:51:14.990465Z"
+    },
+    {
+      "kind": "execution_started",
+      "at": "2026-09-12T12:51:14.994462Z"
+    },
+    {
+      "kind": "purchase_confirmed",
+      "at": "2026-09-12T12:51:20.143889Z"
+    }
+  ]
+}

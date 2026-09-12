@@ -5,7 +5,8 @@ import type { CanonicalProduct, Control, RawOffer } from "../../shared/types.js"
 import { fixtureFor, heuristicNormalise, type Understanding } from "./fixtures.js";
 import { extractProduct, listingPageReason } from "./extract.js";
 
-export const AI_MODE: "claude" | "hardcoded" = process.env.ANTHROPIC_API_KEY ? "claude" : "hardcoded";
+import { PROVIDER } from "./llm.js";
+export const AI_MODE = PROVIDER === "anthropic" ? "claude" : PROVIDER === "openrouter" ? "openrouter" : "hardcoded";
 
 export type UsageLine = { input_tokens: number; output_tokens: number; cache_write_tokens: number; cache_read_tokens: number; usd: number };
 export type Understood = Understanding & { mode: string; source?: string; page_title?: string; usage?: UsageLine };

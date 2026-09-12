@@ -111,6 +111,14 @@ impl MonitorWorker {
                 return Ok(true);
             }
         };
+        self.store
+            .append_event(
+                monitor.id,
+                "offer_observed",
+                serde_json::json!({"offer": offer}),
+            )
+            .await?;
+        tracing::info!(monitor_id = %monitor.id, url = %offer.source_url, available = offer.available, total_minor = ?offer.total_minor, "product link checked");
         if monitor.product.is_none() {
             self.store
                 .set_product_if_missing(monitor.id, &offer.product)
@@ -374,10 +382,7 @@ struct SubmittedOffer(NormalizedOffer);
 
 #[async_trait::async_trait]
 impl OfferSource for SubmittedOffer {
-    async fn check(
-        &self,
-        _: &Monitor,
-    ) -> Result<NormalizedOffer, domain::OfferSourceError> {
+    async fn check(&self, _: &Monitor) -> Result<NormalizedOffer, domain::OfferSourceError> {
         Ok(self.0.clone())
     }
     async fn revalidate(
@@ -794,7 +799,11 @@ mod tests {
             "a rejected offer must not report an execution"
         );
 
-        assert_eq!(merchant.order_count().await, 0, "the merchant was not called");
+        assert_eq!(
+            merchant.order_count().await,
+            0,
+            "the merchant was not called"
+        );
         assert_eq!(
             store.get_monitor(monitor.id).await.unwrap().status,
             MonitorStatus::Active

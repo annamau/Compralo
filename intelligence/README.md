@@ -1,3 +1,19 @@
+# Product intelligence implementation
+
+The running AI reader is in [`autobuy/packages/backend`](../autobuy/packages/backend), implemented in TypeScript. This directory contains scope documentation, not a second service.
+
+- HTTP endpoint: `src/index.ts`, `POST /understand` with `{url, html, screenshot?}`.
+- Product extraction and controls: `src/ai.ts` and `src/claude.ts`.
+- OpenRouter/Anthropic providers: `src/llm.ts`.
+- Usage and request audit: `src/audit.ts`, persisted in `/app/data/audit.jsonl`.
+- Container: [`deploy/Dockerfile.backend`](../deploy/Dockerfile.backend), Compose service `backend`, port 3000, `INTELLIGENCE_ONLY=true`.
+
+Rust owns orders and monitoring. See [`deploy/HACKATHON.md`](../deploy/HACKATHON.md) for deployment and acceptance checks.
+
+---
+
+## Original scope (not a list of implemented endpoints)
+
 # intelligence/ — P3
 
 Todo lo derivado del screenshot: comprensión, metadatos y descubrimiento del

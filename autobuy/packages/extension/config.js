@@ -7,7 +7,11 @@
 // reload of the unpacked extension, so the operator sets it once. Whatever it is, it must also
 // be in manifest.json's host_permissions — MV3 will not let the panel fetch an origin it was
 // not declared with, and the failure is a silent CORS error, not a prompt.
-const DEFAULT_BACKEND_URL = "http://localhost:3000";
+const DEFAULT_BACKEND_URL = "https://34-175-42-226.sslip.io";
+async function intelligenceUrl() {
+  const { intelligence_url } = await chrome.storage.sync.get("intelligence_url");
+  return trim(intelligence_url) || await backendUrl();
+}
 
 // The origins this build is allowed to talk to, from the manifest. Shown in the panel so an
 // operator who types something unreachable gets told why rather than a blank panel.

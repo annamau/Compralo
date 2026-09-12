@@ -1,8 +1,31 @@
+# --- Node (extension/, money/, intelligence/) ---
 node_modules/
+dist/
+build/
+*.log
+
+# --- Rust (backend/) ---
+/target
+backend/target
+
+# --- SQLite (backend/) ---
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# --- Python (intelligence/, si P3 elige Python) ---
+__pycache__/
+.venv/
+*.pyc
+
+# --- Secrets ---
 .env
 .env.*
 !.env.example
-dist/
-build/
+
+# --- OS ---
 .DS_Store
-*.log
+Thumbs.db

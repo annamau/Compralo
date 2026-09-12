@@ -189,7 +189,7 @@ If a judge asks, say exactly that. The defensible claim is the mandate architect
 | 42–52 | The decision log line per fixture. **This is what judges actually read.** |
 | 52–60 | Run the sequence twice clean. Then stop. |
 
-Everything in `p4/money.mjs`, already written and verified against the account — see § 7.
+Everything in `money/money.mjs`, already written and verified against the account — see § 7.
 
 **Done when:** a judge sees the committed amount, sees €465 refused with Stripe's own error code, sees €248 captured against a €250 ceiling with €2 released, and sees the hold vanish when nothing qualifies.
 
@@ -209,8 +209,8 @@ Three things, all small, all cheaper now than at T+3:00.
 
 ## 7. Files
 
-- `p4/money.mjs` — the three endpoints. Runnable. Verified against `acct_1TJZ9WRny0QxauVn` in test mode.
-- `p4/fixtures.sh` — fires all four demo fixtures at a running instance.
+- `money/money.mjs` — the three endpoints. Runnable. Verified against `acct_1TJZ9WRny0QxauVn` in test mode.
+- `money/fixtures.sh` — fires all four demo fixtures at a running instance.
 
 ---
 

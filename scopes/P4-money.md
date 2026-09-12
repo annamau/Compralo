@@ -54,6 +54,23 @@ The authorization **is** the scoped credential. Stripe refuses a capture above i
 
 ---
 
+## Tasks
+
+Minute-level plan is [PAYMENTS.md § 5](../PAYMENTS.md). These are the same steps on the board's clock.
+
+- [x] T+0:15 — Kill-switch run against the account. Issuing ❌, Connect ❌, manual capture ✅.
+- [ ] T+0:20 — `STRIPE_SECRET_KEY` from the test profile, SDK installed. **Assert the key starts `sk_test_`** and fail loudly if it does not.
+- [ ] T+1:00 — `POST /funds/commit` — PaymentIntent, `capture_method: manual`, `amount = max_total_cents`. Return `hold_id`, `client_secret`, `expires`.
+- [ ] T+1:30 — `POST /checkout` — capture `amount_to_capture = true_total_cents` with the stable idempotency key. Map Stripe errors to the four contract statuses.
+- [ ] T+2:00 — `POST /funds/release` — cancel. Wire it with P1 to every terminal state: expired, cancelled, failed.
+- [ ] T+2:15 — Run all four fixtures end to end: €219, €282, €248, €465.
+- [ ] T+2:30 — One decision-log line per outcome. **This is what judges actually read** — write the sentences with the same care P3 writes rejection reasons.
+- [ ] T+2:45 — `NEEDS_ATTENTION` path: reproduce `authentication_required` on demand so the 3DS story is demonstrable rather than claimed.
+- [ ] T+3:00 — Confirm the three contract notes below have landed with P1 in writing.
+- [ ] T+3:15 — Run the sequence twice clean. Then stop.
+
+---
+
 ## Three things P1 must confirm in writing at T+0:30
 
 From PAYMENTS.md § 6, now reflected in `CONTRACTS.md`:

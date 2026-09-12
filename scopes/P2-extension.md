@@ -16,7 +16,7 @@ You own everything the user touches. If the panel feels slow or generic, no amou
 - Watch list: the user's instructions and their live states
 - Empty, loading, low-confidence and error states
 - `host_permissions` and the client half of CORS
-- Notifications surface *(if moved from P1 at T+0:30)*
+- The notification surface — rendering the events P1 emits
 
 ## Does NOT own
 

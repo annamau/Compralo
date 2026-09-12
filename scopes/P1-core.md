@@ -15,13 +15,13 @@ You are the critical path. Three lanes converge on you around T+3:00, so your fi
 - **The deterministic gate** — mandate vs resolved facts
 - Execution lock, idempotency, the instruction state machine
 - Backend deployment, shared env template, logging
-- Notifications *(moved to P2 if you are over capacity — decide at T+0:30)*
+- Emitting a notification event on every state change
 
 ## Does NOT own
 
 - **Any model call.** You never prompt anything. Ask P3.
 - **Any payment call.** You never touch a card or a balance. Ask P4.
-- **Any UI.** You return JSON; P2 decides how it looks.
+- **Any UI.** You return JSON; P2 decides how it looks — including how notifications are shown.
 - **Whether two products are the same.** That is P3's judgment, and you consume it as a fact.
 
 > **Boundary rule: P1 never calls a model. P3 never touches the mandate.**

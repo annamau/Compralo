@@ -6,7 +6,6 @@
 
 Contracts everyone codes against: **[CONTRACTS.md](CONTRACTS.md)** — read it before writing a line.
 Per-person scope and boundaries: **[scopes/](scopes/)** — what you own, and what you must not build.
-What nobody is building: **[GAPS.md](GAPS.md)**.
 
 ---
 
@@ -29,7 +28,7 @@ Six beats. If a beat is at risk, everything else stops. Anything not serving one
 
 | | Person | Owns | Surface |
 |---|--------|------|---------|
-| **P1** | Core | Backend, queue, checker worker, notifications, **the contracts** | Rust API + workers |
+| **P1** | Core | Backend, queue, checker worker, notification events, **the contracts** | Rust API + workers |
 | **P2** | Extension | Capture, product view, user's watch list, login | Chrome MV3 |
 | **P3** | Intelligence | Screenshot → understanding → metadata → Exa discovery | Model calls + search |
 | **P4** | Money | Pre-charge, balance, low-friction authorization, checkout | Payments |
@@ -51,7 +50,7 @@ Backend, the per-user check queue, the checker worker, notifications. Owns `CONT
 - [ ] T+2:00 — `POST /offers` ingest, normalized. Retailer-specific mess stops here; everything downstream sees one shape.
 - [ ] **T+2:30 — The deterministic gate.** Mandate vs resolved facts → qualify or reject. ~40 lines, no model, and you should be happy to show a judge the source.
 - [ ] T+3:00 — Execution lock + idempotency. Fire the same qualifying offer twice on purpose and prove one purchase.
-- [ ] T+3:15 — Notifications on state change (channel decision below in Gaps).
+- [ ] T+3:15 — Emit a notification event on every state change. P2 renders it.
 - [ ] T+3:30 — Terminal states clean up: cancel monitors, release funds, revoke spend authority.
 
 **Done when:** an instruction can be armed by one call, watched by the worker with no browser open, judged against its mandate, and executed exactly once — with every rejection on the record.
@@ -138,26 +137,6 @@ Where the parts join. Each is frozen at the stated time; after that a change cos
 | **T+3:30** | First full end-to-end attempt. Whatever breaks becomes the team's only task. |
 | **T+4:00** | **Feature freeze. Absolute.** Every team ignores this and every team regrets it. |
 | **T+4:30** | Backup recording done. Then rehearse until the clock runs out. |
-
----
-
-## Gaps — team lead, read this
-
-Things the current split does not cover.
-
-**1. Staging the closed-browser beat — your call, make it deliberately.** Not an architecture gap: state lives in the backend and the extension is a thin client, so the agent keeps working whatever the browser does. The open question is what the audience looks at during the interval when the browser is shut. Two options: reopen the extension afterwards and walk the decision log (cheap, lands softer), or mirror the same watch-list view as a web page on a second screen so rejections arrive live (nearly free, since the client is already thin — same API calls, same components). Decide before T+3:15, not at T+4:30.
-
-**2. Money in and money out are two different jobs.** P4 has pre-charge — taking funds from the user. Nobody was assigned the purchase at the merchant. I put it in P4, but it is a second integration, not a variation of the first. If P4 is already full, this is the piece to move.
-
-**3. Nobody owned the verdict.** P3 understands products, P1 runs the queue — but "does this offer qualify" sat between two chairs, and it is the agentic core. I split it: P3 returns the facts (`/adjudicate`), P1 applies the mandate (deterministic gate). Confirm that split or reassign it, but do not leave it implicit.
-
-**4. P1 is carrying roughly 40% of the board.** API, queue, worker, gate, locking, notifications *and* the contracts. They become the bottleneck around T+3:00 when three lanes converge on them. Move notifications to P2 (they own the user-facing surface anyway) and consider moving the checker worker to whoever finishes first.
-
-**5. Nobody is rehearsing.** Four people building means zero people making sure it works on stage. This does not need a fifth person — it needs whoever hits their T+4:00 done first to stop coding and own the run-through, and it needs you to enforce the freeze.
-
-**6. Notification channel is undecided.** Browser notifications require the browser open, which contradicts Beat 4. Decide now: email, or a visible dashboard the demo cuts to.
-
-**7. Rust.** If P1 is fluent, ignore this. If not, it is the largest schedule risk on the board — Rust plus async workers plus a payment SDK is slower to write than the alternatives, and P1 is already the critical path.
 
 ---
 

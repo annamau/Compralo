@@ -1,0 +1,10 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { render } from './page.mjs';
+const available = process.argv.includes('--in-stock');
+const root = new URL('./public/', import.meta.url);
+mkdirSync(new URL('products/ps5-slim/', root), { recursive: true });
+writeFileSync(new URL('products/ps5-slim/index.html', root), render(available));
+writeFileSync(new URL('index.html', root), render(available));
+writeFileSync(new URL('_headers', root), '/*\n  Cache-Control: no-store, max-age=0\n  X-Robots-Tag: noindex\n');
+writeFileSync(new URL('robots.txt', root), 'User-agent: *\nAllow: /\n');
+console.log(available ? 'Built IN STOCK fixture' : 'Built OUT OF STOCK fixture');

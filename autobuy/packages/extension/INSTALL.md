@@ -12,15 +12,20 @@ Chrome MV3, unpacked, no store listing. Two ways in; the first is the one to use
 
 After editing any file in this folder, hit the ↻ reload icon on the AutoBuy card in `chrome://extensions`. Editing `manifest.json` always needs that reload; editing `panel.js` usually needs only the panel to be closed and reopened.
 
-## The alternative: a throwaway Chrome profile
+## The alternative: the demo browser (no clicks)
 
 ```bash
-open -na "Google Chrome" --args --load-extension="$PWD/autobuy/packages/extension"
+./autobuy/packages/extension/demo-browser.sh
 ```
 
-Run it from the repo root (`$PWD` is interpolated, so the path must be absolute and correct).
+This launches **Chrome for Testing** with the extension pre-loaded and its own persistent
+profile (`~/.compralo/chrome-profile`), so the pinned icon and the saved backend URL survive
+relaunches. Pass a product URL as the argument to open one instead of the dashboard.
 
-**Caveat, and it is the reason this is the second option:** `--load-extension` is only honoured by a Chrome process that is starting cold. If Chrome is already running, `open -na` hands the arguments to the existing process, which ignores them, and you get a new window with no extension and no error. Quit Chrome completely first (⌘Q, and confirm no `Google Chrome` process survives), or add `--user-data-dir=/tmp/autobuy-chrome` to force a separate profile that can start alongside your normal one. That separate profile also starts with no extensions, no sessions and no bookmarks, which is usually what you want for a demo and never what you want for browsing.
+Why not your normal Chrome: **branded Google Chrome has ignored `--load-extension` since
+137** — it opens a window and says nothing. Chrome for Testing honours it. The script finds
+the newest build Playwright left in `~/Library/Caches/ms-playwright`; with none there,
+`npx @puppeteer/browsers install chrome@stable` and point `CHROME_FOR_TESTING` at the binary.
 
 ## Pointing it at a backend
 

@@ -13,6 +13,7 @@ use domain::OfferSource;
 use domain::{CanonicalProduct, Monitor, MonitorStatus, NormalizedOffer, PurchaseConstraints};
 use execution::{ExecutionEngine, Merchant};
 use merchant_demo::{DemoMerchant, DemoOutcome};
+use merchant_p4::P4Funds;
 use persistence::{MonitorEvent, Store, StoreError};
 use rule_engine::{EvaluationDecision, evaluate};
 use serde::{Deserialize, Serialize};
@@ -24,13 +25,20 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct AppState {
     pub store: Store,
+    /// Kept as the concrete demo merchant so `/v1/demo/scenarios/{scenario}` can still drive it.
     pub merchant: DemoMerchant,
+    /// Whoever actually buys — the demo merchant, or P4 under `MERCHANT=p4`. The worker holds
+    /// the same `Arc`, so `/v1/demo/offers/{id}` executes through the selected backend.
+    pub checkout_merchant: Arc<dyn Merchant>,
+    /// P4's money service, when `MERCHANT=p4`. `None` keeps the self-contained demo behaviour.
+    pub funds: Option<Arc<P4Funds>>,
 }
 
 pub struct MonitorWorker {
     store: Store,
     source: Arc<dyn OfferSource>,
     merchant: Arc<dyn Merchant>,
+    funds: Option<Arc<P4Funds>>,
     worker_id: String,
 }
 
@@ -45,8 +53,15 @@ impl MonitorWorker {
             store,
             source,
             merchant,
+            funds: None,
             worker_id: worker_id.into(),
         }
+    }
+
+    /// Give the worker a money service, so an expiry releases the hold behind it.
+    pub fn with_funds(mut self, funds: Option<Arc<P4Funds>>) -> Self {
+        self.funds = funds;
+        self
     }
 
     pub async fn run(self) {
@@ -63,7 +78,15 @@ impl MonitorWorker {
     }
 
     pub async fn tick(&self) -> anyhow::Result<bool> {
-        self.store.expire_due_monitors(Utc::now()).await?;
+        // Every terminal state releases committed funds. Best effort: the expiry already
+        // happened, and a money service that is down must not stall the checker.
+        for monitor_id in self.store.expire_due_monitors(Utc::now()).await? {
+            if let Some(funds) = &self.funds {
+                funds
+                    .release_best_effort(monitor_id, "deadline_expired")
+                    .await;
+            }
+        }
         let Some(job) = self
             .store
             .claim_due_job(&self.worker_id, chrono::Duration::seconds(45))
@@ -229,6 +252,11 @@ async fn cancel_monitor(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
     state.store.cancel_monitor(id).await?;
+    // The cancellation is already durable; releasing the hold is cleanup, so it never fails
+    // the request. P4's release is idempotent and safe to call without checking first.
+    if let Some(funds) = &state.funds {
+        funds.release_best_effort(id, "monitor_cancelled").await;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 async fn events(
@@ -265,16 +293,32 @@ async fn event_stream(
 struct PaymentRequest {
     maximum_minor: i64,
     currency: String,
+    /// Bumped on a re-arm. P4 keys the Stripe hold on it, so the same attempt returns the
+    /// same hold and a new attempt authorizes a fresh one.
+    #[serde(default = "first_attempt")]
+    attempt: i64,
 }
+fn first_attempt() -> i64 {
+    1
+}
+
 #[derive(Serialize)]
-struct IdResponse {
+struct PaymentAuthorizationResponse {
     id: Uuid,
+    /// The provider's handle on the money: P4's Stripe PaymentIntent, or a `demo-` stand-in.
+    hold_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires: Option<String>,
+    /// `committed` — the ceiling is held. `needs_attention` — the bank wants 3DS first.
+    status: &'static str,
 }
+
+/// The mandate hold. One tap: authorize the ceiling now, capture the true price at buy time.
 async fn authorize_payment(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(input): Json<PaymentRequest>,
-) -> Result<(StatusCode, Json<IdResponse>), ApiError> {
+) -> Result<(StatusCode, Json<PaymentAuthorizationResponse>), ApiError> {
     let monitor = state.store.get_monitor(id).await?;
     if input.maximum_minor < monitor.constraints.maximum_total_minor
         || !input
@@ -285,22 +329,123 @@ async fn authorize_payment(
             "authorization must cover the instruction maximum and currency",
         ));
     }
-    let id = state
+    let commit = match &state.funds {
+        Some(funds) => Some(
+            funds
+                .commit(id, input.maximum_minor, &input.currency, input.attempt)
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, monitor_id = %id, "p4 refused the mandate hold");
+                    ApiError::bad_gateway(format!("the money service refused the hold: {error}"))
+                })?,
+        ),
+        None => None,
+    };
+    let needs_attention = commit.as_ref().is_some_and(|c| c.needs_attention());
+    let (authorization_id, hold_id) = state
         .store
-        .create_payment_authorization(id, input.maximum_minor, &input.currency)
+        .create_payment_authorization_with_reference(
+            id,
+            commit.as_ref().map(|c| c.hold_id.as_str()),
+            input.maximum_minor,
+            &input.currency,
+            needs_attention,
+        )
         .await?;
-    Ok((StatusCode::CREATED, Json(IdResponse { id })))
+    Ok((
+        StatusCode::CREATED,
+        Json(PaymentAuthorizationResponse {
+            id: authorization_id,
+            hold_id,
+            expires: commit.and_then(|c| c.expires),
+            status: if needs_attention {
+                "needs_attention"
+            } else {
+                "committed"
+            },
+        }),
+    ))
 }
 
+/// A hand-submitted offer is its own revalidation: there is no page to re-crawl, so
+/// `revalidate` echoes what was posted. The engine still re-runs `evaluate` on it, so the
+/// mandate ceiling is enforced on exactly the numbers that reach checkout.
+struct SubmittedOffer(NormalizedOffer);
+
+#[async_trait::async_trait]
+impl OfferSource for SubmittedOffer {
+    async fn check(
+        &self,
+        _: &Monitor,
+    ) -> Result<NormalizedOffer, domain::OfferSourceError> {
+        Ok(self.0.clone())
+    }
+    async fn revalidate(
+        &self,
+        _: &NormalizedOffer,
+    ) -> Result<NormalizedOffer, domain::OfferSourceError> {
+        Ok(self.0.clone())
+    }
+}
+
+/// What `POST /v1/demo/offers/{id}` answers: the gate's decision, and — when it qualified —
+/// what the merchant did with it.
+#[derive(Serialize)]
+struct SubmittedOfferResponse {
+    #[serde(flatten)]
+    decision: EvaluationDecision,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    execution: Option<serde_json::Value>,
+}
+
+/// Feed an offer straight to a monitor, bypassing the crawler.
+///
+/// A rejected offer is recorded and nothing else happens. A qualified one runs the same
+/// [`ExecutionEngine`] the worker uses, against whichever merchant `MERCHANT` selected — so
+/// this is the one HTTP path that can drive a monitor to `purchased` under `MERCHANT=p4`,
+/// where the checker cannot crawl a sandbox URL.
 async fn submit_offer(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(offer): Json<NormalizedOffer>,
-) -> Result<Json<EvaluationDecision>, ApiError> {
+) -> Result<Json<SubmittedOfferResponse>, ApiError> {
     let monitor = state.store.get_monitor(id).await?;
     let decision = evaluate(&monitor, &offer, Utc::now());
     state.store.record_offer(id, &offer, &decision).await?;
-    Ok(Json(decision))
+    if matches!(decision, EvaluationDecision::Rejected(_)) {
+        return Ok(Json(SubmittedOfferResponse {
+            decision,
+            execution: None,
+        }));
+    }
+    let source = SubmittedOffer(offer.clone());
+    let execution = match ExecutionEngine::new(state.store.clone())
+        .execute(&monitor, &offer, &source, state.checkout_merchant.as_ref())
+        .await
+    {
+        Ok(order) => serde_json::json!({
+            "result": "purchased",
+            "order_id": order.id,
+            "total_minor": order.total_minor,
+            "currency": order.currency,
+        }),
+        // Not a 5xx: the gate did its job and the outcome is already an event on the monitor.
+        Err(error) => {
+            state
+                .store
+                .append_event(
+                    id,
+                    "qualified_offer_not_executed",
+                    serde_json::json!({"error": error.to_string()}),
+                )
+                .await?;
+            serde_json::json!({"result": "not_executed", "error": error.to_string()})
+        }
+    };
+    Ok(Json(SubmittedOfferResponse {
+        decision,
+        execution: Some(execution),
+    }))
 }
 
 async fn set_scenario(
@@ -374,6 +519,13 @@ impl ApiError {
             message: message.into(),
         }
     }
+    /// An upstream we depend on (today: P4) failed. Distinct from our own 400s on purpose.
+    fn bad_gateway(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::BAD_GATEWAY,
+            message: message.into(),
+        }
+    }
 }
 impl From<StoreError> for ApiError {
     fn from(value: StoreError) -> Self {
@@ -428,9 +580,12 @@ mod tests {
     async fn app() -> Router {
         let store = Store::in_memory().await.unwrap();
         store.migrate().await.unwrap();
+        let merchant = DemoMerchant::new();
         router(AppState {
             store,
-            merchant: DemoMerchant::new(),
+            checkout_merchant: Arc::new(merchant.clone()),
+            merchant,
+            funds: None,
         })
     }
     #[tokio::test]
@@ -518,5 +673,139 @@ mod tests {
             MonitorStatus::Purchased
         );
         assert_eq!(merchant.order_count().await, 1);
+    }
+
+    /// A monitor armed and fed one qualifying offer over HTTP, with no crawler involved.
+    /// This is the path the P4 demo uses, since the checker cannot crawl a sandbox URL.
+    async fn armed_monitor(store: &Store, maximum_total_minor: i64) -> (Monitor, NormalizedOffer) {
+        let product = CanonicalProduct {
+            name: "PS5 Slim Digital".into(),
+            brand: Some("Sony".into()),
+            model: Some("CFI-2016B".into()),
+            identifiers: HashMap::new(),
+        };
+        let url = Url::parse("https://demo.example/ps5").unwrap();
+        let monitor = Monitor {
+            id: Uuid::new_v4(),
+            url: url.clone(),
+            product: Some(product.clone()),
+            constraints: PurchaseConstraints {
+                maximum_total_minor,
+                currency: "EUR".into(),
+                condition: Some(ProductCondition::New),
+                variants: HashMap::new(),
+                bundles_allowed: false,
+                approved_retailers: vec!["demo".into()],
+            },
+            deadline: Utc::now() + ChronoDuration::days(1),
+            status: MonitorStatus::Active,
+            check_interval_seconds: 60,
+            created_at: Utc::now(),
+        };
+        store.create_monitor(&monitor).await.unwrap();
+        store
+            .create_payment_authorization(monitor.id, maximum_total_minor, "EUR")
+            .await
+            .unwrap();
+        let offer = NormalizedOffer {
+            product,
+            retailer: "demo".into(),
+            available: true,
+            item_price_minor: Some(24_800),
+            shipping_minor: Some(0),
+            total_minor: Some(24_800),
+            currency: Some("EUR".into()),
+            condition: Some(ProductCondition::New),
+            variants: HashMap::new(),
+            source_url: url,
+            checked_at: Utc::now(),
+        };
+        (monitor, offer)
+    }
+
+    async fn post_offer(router: Router, id: Uuid, offer: &NormalizedOffer) -> serde_json::Value {
+        let response = router
+            .oneshot(
+                Request::post(format!("/v1/demo/offers/{id}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(offer).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_submitted_qualifying_offer_is_bought_through_the_selected_merchant() {
+        let store = Store::in_memory().await.unwrap();
+        store.migrate().await.unwrap();
+        let (monitor, offer) = armed_monitor(&store, 25_000).await;
+        let merchant = DemoMerchant::new();
+        let router = router(AppState {
+            store: store.clone(),
+            checkout_merchant: Arc::new(merchant.clone()),
+            merchant,
+            funds: None,
+        });
+
+        let body = post_offer(router, monitor.id, &offer).await;
+        assert_eq!(body["result"], "qualified");
+        assert_eq!(body["execution"]["result"], "purchased");
+        assert_eq!(body["execution"]["total_minor"], 24_800);
+        assert_eq!(body["execution"]["currency"], "EUR");
+
+        assert_eq!(
+            store.get_monitor(monitor.id).await.unwrap().status,
+            MonitorStatus::Purchased
+        );
+        assert!(
+            store
+                .events(monitor.id)
+                .await
+                .unwrap()
+                .iter()
+                .any(|e| e.kind == "purchase_confirmed")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_submitted_over_mandate_offer_never_reaches_the_merchant() {
+        let store = Store::in_memory().await.unwrap();
+        store.migrate().await.unwrap();
+        // A €248 offer against a €200 ceiling: rejected by the gate, so nothing is bought.
+        let (monitor, offer) = armed_monitor(&store, 20_000).await;
+        let merchant = DemoMerchant::new();
+        let router = router(AppState {
+            store: store.clone(),
+            checkout_merchant: Arc::new(merchant.clone()),
+            merchant: merchant.clone(),
+            funds: None,
+        });
+
+        let body = post_offer(router, monitor.id, &offer).await;
+        assert_eq!(body["result"], "rejected");
+        assert!(
+            body["execution"].is_null(),
+            "a rejected offer must not report an execution"
+        );
+
+        assert_eq!(merchant.order_count().await, 0, "the merchant was not called");
+        assert_eq!(
+            store.get_monitor(monitor.id).await.unwrap().status,
+            MonitorStatus::Active
+        );
+        assert!(
+            !store
+                .events(monitor.id)
+                .await
+                .unwrap()
+                .iter()
+                .any(|e| e.kind == "execution_started")
+        );
     }
 }

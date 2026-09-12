@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 async-stream = "0.3"
+async-trait.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 chrono.workspace = true
@@ -13,6 +14,7 @@ domain.workspace = true
 dotenvy.workspace = true
 execution = { path = "../execution" }
 merchant-demo = { path = "../merchant-demo" }
+merchant-p4 = { path = "../merchant-p4" }
 monitoring = { path = "../monitoring" }
 product-intelligence = { path = "../product-intelligence" }
 futures-core = "0.3"
@@ -28,5 +30,5 @@ url.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-async-trait.workspace = true
+reqwest.workspace = true
 tower = { version = "0.5", features = ["util"] }

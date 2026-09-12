@@ -1,0 +1,40 @@
+:root { --ink:#14161a; --muted:#6b7280; --line:#e5e7eb; --bg:#f7f7f8; --card:#fff; --accent:#111827; --ok:#15803d; --bad:#b91c1c; --warn:#b45309; --okbg:#dcfce7; --badbg:#fee2e2; --warnbg:#fef3c7; }
+* { box-sizing:border-box; }
+body { margin:0; padding:0 14px 24px; background:var(--bg); color:var(--ink); font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif; }
+header { display:flex; justify-content:space-between; align-items:center; padding:14px 0 10px; }
+.brand { font-weight:700; font-size:17px; letter-spacing:-.01em; }
+.logo { display:inline-block; margin-right:2px; }
+h1 { font-size:18px; line-height:1.25; margin:4px 0 8px; letter-spacing:-.01em; }
+h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:18px 0 8px; }
+button { font:inherit; cursor:pointer; border-radius:8px; border:1px solid var(--line); background:#fff; padding:8px 12px; }
+button.ghost { color:var(--muted); background:transparent; }
+button.ghost:hover { color:var(--ink); background:#fff; }
+button.primary, a.button { display:block; width:100%; margin-top:16px; padding:13px; text-align:center; font-weight:600; font-size:16px; color:#fff; background:var(--accent); border-color:var(--accent); text-decoration:none; border-radius:10px; }
+button.primary:disabled { opacity:.6; cursor:wait; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:6px; }
+.eyebrow { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+.meta { display:flex; gap:10px; align-items:center; font-weight:600; }
+.pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.pill.ok { background:var(--okbg); color:var(--ok); } .pill.bad { background:var(--badbg); color:var(--bad); } .pill.warn { background:var(--warnbg); color:var(--warn); }
+.ids { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--muted); margin-top:8px; word-break:break-all; }
+.chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.chip { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:2px 8px; font-size:13px; }
+.mode { margin-top:10px; font-size:12px; color:var(--muted); }
+.field { margin-bottom:12px; }
+.field > label { display:block; font-weight:600; font-size:14px; margin-bottom:5px; }
+.req { color:var(--warn); font-weight:600; font-size:12px; }
+input[type=number], select { width:100%; font:inherit; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+.row { display:flex; align-items:center; gap:8px; } .row input { flex:1; } .unit { color:var(--muted); font-weight:600; }
+.checks { display:flex; flex-wrap:wrap; gap:6px 14px; }
+label.check { display:inline-flex; align-items:center; gap:6px; font-weight:500; cursor:pointer; }
+label.check input { width:16px; height:16px; }
+details { margin-top:6px; } summary { cursor:pointer; color:var(--muted); font-size:13px; margin-bottom:8px; }
+.hint { font-size:12px; color:var(--muted); margin:8px 0 0; }
+.status { padding:12px 14px; border-radius:10px; margin-bottom:10px; white-space:pre-wrap; word-break:break-word; }
+.status.skeleton { background:linear-gradient(90deg,#e9eaee 25%,#f4f4f6 50%,#e9eaee 75%); background-size:200% 100%; animation:shimmer 1.2s infinite; color:var(--muted); min-height:110px; }
+.status.error { background:var(--badbg); color:var(--bad); font-family:ui-monospace,Menlo,monospace; font-size:13px; }
+@keyframes shimmer { 0% { background-position:200% 0 } 100% { background-position:-200% 0 } }
+footer { margin-top:22px; font-size:13px; } footer a { color:var(--muted); }
+.hidden { display:none !important; }
+.shot { display:block; width:100%; max-height:150px; object-fit:cover; object-position:top; border-radius:8px; border:1px solid var(--line); margin-bottom:10px; background:#eee; }
+.page { font-size:12px; color:var(--muted); margin-bottom:8px; word-break:break-all; font-family:ui-monospace,Menlo,monospace; }

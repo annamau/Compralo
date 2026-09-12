@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoBuy</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo">⚡</span> AutoBuy</div>
+  <button id="reread" class="ghost" type="button" title="Read the current tab again">↻ Re-read page</button>
+</header>
+
+<div id="status" class="status hidden"></div>
+
+<section id="product" class="card hidden"></section>
+
+<form id="order" class="hidden" autocomplete="off">
+  <h2>Buy only if…</h2>
+  <div id="controls"></div>
+
+  <h2>Terms</h2>
+  <div class="field">
+    <label for="max_total">Max total, delivered</label>
+    <div class="row"><input id="max_total" type="number" step="0.01" min="1" required><span id="currency" class="unit">EUR</span></div>
+  </div>
+  <div class="field">
+    <label for="condition">Condition</label>
+    <select id="condition"><option value="new">New</option><option value="refurbished">Refurbished</option><option value="any">Any</option></select>
+  </div>
+  <div class="field">
+    <label class="check"><input id="allow_bundles" type="checkbox"><span>Bundles allowed</span></label>
+  </div>
+  <div class="field">
+    <label>Approved retailers</label>
+    <div id="retailers" class="checks"></div>
+  </div>
+  <div class="field">
+    <label for="deadline_days">Keep trying for</label>
+    <div class="row"><input id="deadline_days" type="number" min="1" max="365" value="30"><span class="unit">days</span></div>
+  </div>
+  <details>
+    <summary>Payment · Stripe test mode</summary>
+    <div class="field">
+      <label for="payment_method">Test card</label>
+      <select id="payment_method">
+        <option value="pm_card_visa">Visa ····4242 — authorises</option>
+        <option value="pm_card_authenticationRequired">Visa needing 3DS — lands in Needs attention</option>
+      </select>
+    </div>
+  </details>
+  <button id="create" type="submit" class="primary">Create Buy Order</button>
+  <p class="hint">Authorises a hold for the max total now. Captures only the real price, only if every rule passes.</p>
+</form>
+
+<section id="result" class="card hidden"></section>
+
+<footer><a href="http://localhost:3000/dashboard" target="_blank" rel="noopener">Open dashboard ↗</a></footer>
+<script src="panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+# AutoBuy — clean run transcript (backend terminal), 2026-09-12T10:36Z, hardcoded AI + Stripe stub
+# ./demo.sh reset; ./demo.sh order; ./demo.sh --mismatch-first  (offers A, B, D, C)
+
+[10:35:56] OFFER_SEEN               f8396422  store-a: "PS5 Slim Disc Edition + Spider-Man 2 bundle" 430.00 + 0.00 shipping = 430.00 EUR, new
+[10:35:56] OFFER_NORMALISED         f8396422  hardcoded: PS5 Slim Disc Edition + Spider-Man 2 bundle {edition=disc, storage=1TB, colour=white} [bundle]
+[10:35:56] OFFER_REJECTED           f8396422  store-a 430.00: bundle (bundle, not allowed); variant:edition (edition is disc, want digital)
+[10:35:59] OFFER_SEEN               f8396422  store-b: "Sony PlayStation 5 Slim Digital Edition 1TB" 445.00 + 15.00 shipping = 460.00 EUR, new
+[10:35:59] OFFER_NORMALISED         f8396422  hardcoded: Sony PlayStation 5 Slim Digital Edition 1TB {edition=digital, storage=1TB, colour=white}
+[10:35:59] OFFER_REJECTED           f8396422  store-b 460.00: price (460.00 > 450.00)
+[10:36:05] OFFER_SEEN               f8396422  store-a: "PlayStation 5 Slim Digital Edition 1TB" 440.00 + 0.00 shipping = 440.00 EUR, new
+[10:36:05] OFFER_NORMALISED         f8396422  hardcoded: PlayStation 5 Slim Digital Edition 1TB {edition=digital, storage=1TB, colour=white}
+[10:36:05] OFFER_QUALIFIED          f8396422  store-a 440.00 EUR passes all 10 checks → executing
+[10:36:05] LOCK_ACQUIRED            f8396422  lock held for store-a offer-d at 440.00 EUR; one order per instruction
+[10:36:05] REVALIDATED              f8396422  re-fetched and re-checked: still qualifies at 440.00
+[10:36:05] CHECKOUT_PRICE_MISMATCH  f8396422  store-a listed 440.00 but wants 470.00 at checkout — aborted, nothing captured, lock released, still monitoring
+[10:36:08] OFFER_SEEN               f8396422  store-c: "PlayStation 5 Slim Digital Edition 1TB Console" 448.00 + 0.00 shipping = 448.00 EUR, new
+[10:36:08] OFFER_NORMALISED         f8396422  hardcoded: PlayStation 5 Slim Digital Edition 1TB Console {edition=digital, storage=1TB, colour=white}
+[10:36:08] OFFER_QUALIFIED          f8396422  store-c 448.00 EUR passes all 10 checks → executing
+[10:36:08] LOCK_ACQUIRED            f8396422  lock held for store-c offer-c at 448.00 EUR; one order per instruction
+[10:36:08] REVALIDATED              f8396422  re-fetched and re-checked: still qualifies at 448.00
+[10:36:08] CHECKOUT_OK              f8396422  store-c accepted order store-c-MTY9281X at 448.00 EUR
+[stripe STUB] capture 44800 on pi_stub_mty91ubp → succeeded
+[10:36:08] PAYMENT_CAPTURED         f8396422  captured 448.00 EUR on pi_stub_mty91ubp (succeeded)
+[10:36:08] PURCHASED                f8396422  Sony PlayStation 5 Slim Digital Edition 1TB from store-c for 448.00 EUR — order store-c-MTY9281X

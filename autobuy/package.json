@@ -1,0 +1,20 @@
+{
+  "name": "autobuy",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AutoBuy — limit orders for everyday products. AI handles ambiguity, deterministic software handles money.",
+  "workspaces": [
+    "packages/market",
+    "packages/backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n market,backend -c cyan,green \"npm run dev -w packages/market\" \"npm run dev -w packages/backend\"",
+    "market": "npm run dev -w packages/market",
+    "backend": "npm run dev -w packages/backend",
+    "typecheck": "npm run typecheck -w packages/backend",
+    "test:rules": "npm run test:rules -w packages/backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

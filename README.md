@@ -11,6 +11,16 @@ cargo run -p server
 The server listens on `127.0.0.1:3000` and creates `buy-agent.sqlite` by
 default. Override these with `BIND_ADDR` and `DATABASE_URL`.
 
+To use a local environment file:
+
+```sh
+cp .env.example .env
+cargo run -p server
+```
+
+`RUST_LOG` is optional. No AI API key is currently required because the AI
+provider integration is defined but disabled by default.
+
 ## Create a monitor
 
 ```sh

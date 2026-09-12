@@ -10,6 +10,7 @@ anyhow.workspace = true
 axum.workspace = true
 chrono.workspace = true
 domain.workspace = true
+dotenvy.workspace = true
 execution = { path = "../execution" }
 merchant-demo = { path = "../merchant-demo" }
 monitoring = { path = "../monitoring" }

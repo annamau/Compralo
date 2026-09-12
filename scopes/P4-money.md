@@ -66,6 +66,7 @@ Minute-level plan is [PAYMENTS.md § 5](../PAYMENTS.md). These are the same step
 - [ ] T+2:15 — Run all four fixtures end to end: €219, €282, €248, €465.
 - [ ] T+2:30 — One decision-log line per outcome. **This is what judges actually read** — write the sentences with the same care P3 writes rejection reasons.
 - [ ] T+2:45 — `NEEDS_ATTENTION` path: reproduce `authentication_required` on demand so the 3DS story is demonstrable rather than claimed.
+- [ ] T+2:50 — **Capture strictly the `total_cents` handed in that call.** Never a cached offer price — P1 re-reads it immediately before calling you, and that fresh figure is the only correct one.
 - [ ] T+3:00 — Confirm the three contract notes below have landed with P1 in writing.
 - [ ] T+3:15 — Run the sequence twice clean. Then stop.
 

@@ -57,6 +57,7 @@ Everything derived from the screenshot: understanding, metadata, and Exa discove
 - [ ] T+2:30 — `/adjudicate`: same product or not, true all-in total, hidden costs, condition, seller.
 - [ ] T+2:45 — `fixtures/offers.json` with the four demo offers, so anyone can replay the sequence without a real restock.
 - [ ] T+3:00 — Tune the rejection sentences against real offers. Read them aloud; if one sounds like a form error, rewrite it.
+- [ ] T+3:15 — **`alternative` block on `/adjudicate`** when the listing is not the same product but is a credible stand-in: what changes, and the price delta. State the difference; never recommend — P1 decides whether it is worth interrupting the user.
 - [ ] T+3:30 — Cache canonical products so repeat offers do not re-call the model. "One expensive call supports many cheap checks" is a claim in the pitch — make it true.
 
 ---

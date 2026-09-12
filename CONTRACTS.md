@@ -34,11 +34,16 @@ Whatever you use for tokens, decide the expiry now and make the extension handle
 
 ```
 DRAFT → ARMED → EVALUATING → EXECUTING → PURCHASED
-                     ↑____________|
-                (offer rejected, keep watching)
+          ↑          ↑____________|
+          |     (offer rejected, keep watching)
+          |
+   AWAITING_APPROVAL
+   no exact match, but a credible alternative was found
 
 Exits: NEEDS_ATTENTION · FAILED · EXPIRED · CANCELLED
 ```
+
+`AWAITING_APPROVAL` holds no lock and spends nothing. It is the one state where the agent stops and asks.
 
 - Only `EXECUTING` holds the lock, and an instruction may enter it **exactly once**.
 - Every terminal state releases committed funds, revokes spend authority, and cancels outstanding checks.
@@ -125,8 +130,13 @@ res  { verdict: "QUALIFIES" | "REJECTED",
        resolved: { is_same_product, true_total_cents,
                    hidden_costs: [ { label, amount_cents } ],
                    condition, seller_ok },
+       alternative?: { is_credible_substitute: bool,
+                       delta_cents,
+                       what_changes: "2TB instead of 1TB, same seller tier" },
        confidence: 0.0–1.0 }
 ```
+
+`alternative` is present only when `is_same_product` is false and the listing is still a reasonable stand-in. P3 states what changes; **P1 decides whether that is worth interrupting the user for.** P3 never recommends.
 
 `reason` is shown to the user verbatim and read aloud on stage. It must sound like a sharp friend catching a near-miss, not a validation error.
 
@@ -152,6 +162,10 @@ GET  /instructions/:id      everything the dashboard renders
 POST /instructions/:id/cancel
   res  { status: "CANCELLED", released_cents }
 
+POST /instructions/:id/substitute    approve or decline an alternative
+  req  { candidate_id, approved }
+  res  { status: "ARMED", accepted_alternatives: [ candidate_id ] }
+
 POST /offers                checker worker → normalized offer
   req  { instruction_id, candidate_id, retailer, url, raw_text,
          price_cents, shipping_cents, currency, seller, condition }
@@ -171,7 +185,22 @@ AND resolved.condition IN instruction.constraints.condition
 AND now() < instruction.deadline
 AND instruction.status == ARMED
 AND no purchase exists for this instruction
-→ acquire lock → EXECUTING
+→ acquire lock
+→ RE-READ the offer total from source
+→ moved more than PRICE_TOLERANCE_CENTS? release lock, re-evaluate
+→ EXECUTING, with the freshly read total
+```
+
+**The re-read is not optional.** A retailer changing the price between qualifying and capturing is the most realistic way to overspend inside an otherwise correct system. P4 captures the amount handed to it in that call and never a cached one.
+
+### When to escalate instead of buying
+
+```
+no qualifying offer
+AND an offer has alternative.is_credible_substitute
+AND alternative.delta_cents within escalation_window
+AND instruction not already AWAITING_APPROVAL
+→ AWAITING_APPROVAL + notification
 ```
 
 Three independent layers stand between the model and the user's money: the model resolves facts, the gate applies the mandate, the payment layer enforces the ceiling. A judge should be able to see all three.

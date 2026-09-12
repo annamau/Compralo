@@ -65,6 +65,8 @@ You are the critical path. Three lanes converge on you around T+3:00, so your fi
 - [ ] T+2:30 — The gate. ~40 lines, no model, source you would show a judge.
 - [ ] T+2:45 — Structured logging on every state transition. When it breaks at T+3:30 this is the difference between five minutes and forty-five.
 - [ ] T+3:00 — Execution lock + idempotency. Fire the same offer twice on purpose.
+- [ ] T+3:15 — **Re-read the offer total immediately before checkout.** Moved beyond `PRICE_TOLERANCE_CENTS`? Release the lock and re-evaluate. Hand P4 the fresh figure, never a cached one.
+- [ ] T+3:30 — **Substitution escalation:** no exact match but a credible alternative exists → `AWAITING_APPROVAL` + notification. `POST /instructions/:id/substitute` applies the answer. This state holds no lock and spends nothing.
 - [ ] T+3:30 — Terminal states release funds, revoke authority, cancel checks.
 
 ---

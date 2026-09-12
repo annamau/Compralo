@@ -22,6 +22,10 @@ Six beats. If a beat is at risk, everything else stops. Anything not serving one
 | 5 | Offers arrive, the agent rejects the wrong ones with reasons | P1 + P3 |
 | 6 | One qualifies. It buys exactly once. | P1 + P4 |
 
+If no exact match appears but a credible alternative does, the agent stops and asks rather than guessing — `AWAITING_APPROVAL`. That is the only moment it comes back to the user with a question nobody could have written at setup time, and it is worth demoing if the clock allows.
+
+**Demo mandate is 7 days, not 30.** Card authorizations expire around then. The line to say is "seven days today, and here is the path to thirty" — rolling re-authorization, or Issuing once enabled. Naming it reads as engineering; being caught by it reads as a bug.
+
 ---
 
 ## Team

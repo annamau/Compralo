@@ -59,6 +59,7 @@ You own everything the user touches. If the panel feels slow or generic, no amou
 - [ ] T+2:30 — Mandate form → arm → confirmation stating exactly what was committed and its ceiling. That sentence is doing trust work; write it carefully.
 - [ ] T+3:00 — Watch list with live states.
 - [ ] T+3:15 — Low-confidence path: below ~0.7, ask rather than assume. An agent that asks reads smarter than one that guesses.
+- [ ] T+3:30 — **Approval card** for `AWAITING_APPROVAL`: what the agent found, what changes, the price delta, approve / decline. This is the one screen where the agent asks you something — give it the most care in the panel.
 - [ ] T+3:45 — Skeleton → AI-result upgrade animation. This is Beat 2 and it is worth twenty minutes.
 
 ---

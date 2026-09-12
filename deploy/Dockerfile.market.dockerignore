@@ -1,0 +1,22 @@
+# Generated for deploy/. BuildKit reads <dockerfile>.dockerignore in preference
+# to the context-root .dockerignore, so this list applies only to this one build.
+.git
+.github
+**/node_modules
+**/target
+**/dist
+**/build
+# Backend state is a volume, never a build input.
+autobuy/data
+data
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+**/*.sqlite
+**/*.sqlite-shm
+**/*.sqlite-wal
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/.DS_Store

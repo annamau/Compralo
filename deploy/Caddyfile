@@ -1,0 +1,42 @@
+# Compralo edge.
+#
+# SITE_ADDRESS comes from compose: ${DOMAIN:-:80}.
+#   a hostname -> Caddy provisions a certificate over ACME and redirects :80 to :443
+#   :80        -> plain HTTP on the VM's external IP, no certificate, no DNS needed
+#
+# No domain, but you still want HTTPS? sslip.io resolves <dashed-ip>.sslip.io to that
+# IP, so DOMAIN=34-175-42-226.sslip.io gets a real certificate with no DNS to buy.
+# That is what P1's existing VM already does; see deploy/gcp-startup.sh.
+{
+	admin off
+}
+
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	# handle_path strips the matched prefix, so /money/checkout reaches money as
+	# /checkout. Without the strip every upstream would 404 on its own routes.
+	redir /money /money/
+	handle_path /money/* {
+		reverse_proxy money:4242
+	}
+
+	redir /market /market/
+	handle_path /market/* {
+		reverse_proxy market:4000
+	}
+
+	redir /core /core/
+	handle_path /core/* {
+		reverse_proxy core:8080
+	}
+
+	# Everything else is the AutoBuy backend: the dashboard, /instructions, /understand,
+	# and /events/stream. flush_interval -1 disables response buffering, without which
+	# the SSE stream arrives in chunks whenever the proxy feels like it.
+	handle {
+		reverse_proxy backend:3000 {
+			flush_interval -1
+		}
+	}
+}

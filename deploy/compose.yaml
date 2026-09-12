@@ -1,0 +1,147 @@
+# Compralo — the whole system, one command.
+#
+#   docker compose -f deploy/compose.yaml up -d --build
+#
+# Compose takes its project directory from this file's directory, so `deploy/.env`
+# is loaded automatically and every build context below is relative to `deploy/`.
+# `..` is therefore the repository root.
+#
+# Only caddy publishes ports. Everything else is reachable by service name on the
+# private compose network, which is also why nothing here needs its own TLS.
+#
+#   /          -> backend:3000   dashboard, /instructions, /events/stream (SSE)
+#   /money/*   -> money:4242     /funds/commit, /checkout, /coverage
+#   /market/*  -> market:4000    the simulator's /offers, /admin/offers
+#   /core/*    -> core:8080      P1's Rust API, /v1/monitors
+#
+# core listens on 8080, not 3000: that is what the repo-root Dockerfile sets as
+# BIND_ADDR and what its own HEALTHCHECK curls. Changing it means changing both.
+
+name: compralo
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ---- P4 money ---------------------------------------------------------------
+  # Stateless apart from three in-memory Maps (holds, holdsByInstruction, purchases),
+  # so a single replica is not an optimisation, it is a correctness requirement.
+  money:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.money
+      args:
+        # Where P4's service lives in the tree. money/ since the directory-structure
+        # merge; set MONEY_DIR=p4 in deploy/.env if it moves back.
+        MONEY_DIR: ${MONEY_DIR:-money}
+    image: compralo-money:latest
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      PORT: "4242"
+      # money.mjs exits unless this starts with sk_test_; zinc.mjs exits unless
+      # ZINC_API_KEY starts with zn_test_. Nobody buys for real today.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?set STRIPE_SECRET_KEY=sk_test_... in deploy/.env}
+      ZINC_API_KEY: ${ZINC_API_KEY:?set ZINC_API_KEY=zn_test_... in deploy/.env}
+    expose:
+      - "4242"
+
+  # ---- market simulator -------------------------------------------------------
+  market:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.market
+    image: compralo-market:latest
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      MARKET_PORT: "4000"
+    expose:
+      - "4000"
+
+  # ---- AutoBuy backend --------------------------------------------------------
+  # Runs a 3 s polling loop inside the process and mirrors state to /app/data on
+  # every change. It must stay warm and it must keep its disk: no scale-to-zero,
+  # no throttled CPU, one replica.
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    image: compralo-backend:latest
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      PORT: "3000"
+      MARKET_URL: http://market:4000
+      # Absent, the backend runs in fixtures mode and prints "AI: hardcoded".
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Absent, the backend runs its Stripe stub and prints "Stripe: STUB".
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      # Absent, the Exa perception lane reports mode "off" and yields no offers.
+      EXA_API_KEY: ${EXA_API_KEY:-}
+      # Where the hold/capture lane moves once the backend stops talking to Stripe
+      # directly. Wired here so the migration is a code change, not a deploy change.
+      P4_URL: ${P4_URL:-http://money:4242}
+      POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-3000}
+      EXA_POLL_INTERVAL_MS: ${EXA_POLL_INTERVAL_MS:-60000}
+    volumes:
+      - autobuy-data:/app/data
+    expose:
+      - "3000"
+    depends_on:
+      market:
+        condition: service_healthy
+      money:
+        condition: service_healthy
+
+  # ---- P1 core (Rust) ---------------------------------------------------------
+  # Built from the repository-root Dockerfile that P1 already maintains — this is a
+  # reference to it, not a copy, so the two can never drift.
+  core:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: compralo-core:latest
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      BIND_ADDR: 0.0.0.0:8080
+      DATABASE_URL: sqlite:///data/buy-agent.sqlite?mode=rwc
+      RUST_LOG: ${RUST_LOG:-server=info,tower_http=info}
+      SPIDER_CLOUD_API_KEY: ${SPIDER_CLOUD_API_KEY:?set SPIDER_CLOUD_API_KEY in deploy/.env}
+    volumes:
+      - core-data:/data
+    expose:
+      - "8080"
+
+  # ---- edge -------------------------------------------------------------------
+  # DOMAIN set   -> Caddy answers on that name and provisions a real certificate.
+  # DOMAIN unset -> SITE_ADDRESS falls back to :80 and it serves plain HTTP on the IP.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      SITE_ADDRESS: ${DOMAIN:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - backend
+      - money
+      - market
+      - core
+
+volumes:
+  autobuy-data:
+  core-data:
+  caddy-data:
+  caddy-config:

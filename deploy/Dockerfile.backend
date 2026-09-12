@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1
+#
+# Compralo — AutoBuy Hono/TS backend.
+#
+#   build context: the repository root (compose passes `..`)
+#   ignore file:   deploy/Dockerfile.backend.dockerignore
+#
+# There is no compile step: the service runs TypeScript directly through tsx,
+# exactly as `npm run dev -w packages/backend` does. tsx is a devDependency, so
+# the deps stage installs dev dependencies deliberately; NODE_ENV is only set in
+# the runtime stage so it cannot strip them.
+#
+# State lives in ./data/state.json resolved from packages/backend/src/env.ts as
+# <monorepo root>/data — i.e. /app/data in this image. Mount a volume there or
+# every restart forgets every instruction.
+
+# ---- deps: manifests first so a source edit does not reinstall the world ----------
+FROM node:22-alpine AS deps
+WORKDIR /app
+
+# cheerio / exa-js / the Anthropic SDK are pure JS today; this is insurance in case a
+# transitive dependency needs to compile. The whole stage is discarded afterwards.
+RUN apk add --no-cache python3 make g++
+
+COPY autobuy/package.json ./package.json
+COPY autobuy/packages/backend/package.json ./packages/backend/package.json
+COPY autobuy/packages/market/package.json ./packages/market/package.json
+
+# No package-lock.json is committed in autobuy/, so this is `npm install`, not `npm ci`.
+RUN npm install --include=dev --no-audit --no-fund
+
+# ---- runtime ---------------------------------------------------------------------
+FROM node:22-alpine AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    PORT=3000 \
+    MARKET_URL=http://market:4000
+
+# Brings /app/node_modules plus any per-workspace node_modules npm chose not to hoist.
+COPY --from=deps /app/ ./
+
+COPY autobuy/package.json ./package.json
+COPY autobuy/packages ./packages
+
+# /app/data is the persisted state directory (see the compose volume).
+RUN mkdir -p /app/data && chown -R node:node /app
+USER node
+
+VOLUME ["/app/data"]
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+
+# Identical to `npm run dev -w packages/backend`, minus the npm process in the middle
+# that would swallow SIGTERM and leave the 3 s polling loop running through a restart.
+CMD ["/app/node_modules/.bin/tsx", "/app/packages/backend/src/index.ts"]

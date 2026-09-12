@@ -28,7 +28,6 @@ import { mockRequest } from './mockStore';
 import * as monitors from './monitorsAdapter';
 import {
   clearSession,
-  readMockOverride,
   readSession,
   writeMockOverride,
   writeSession,
@@ -36,7 +35,8 @@ import {
 } from './storage';
 
 /** Mock por defecto: solo `VITE_MOCK=false` explícito apunta al backend real. */
-const ENV_MOCK = import.meta.env.VITE_MOCK !== 'false';
+// La extensión se apoya únicamente en la API Rust; no hay fallback de fixtures.
+const ENV_MOCK = false;
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://127.0.0.1:3000';
 
 export { ApiError, isNetworkError, isUnauthorized } from './http';
@@ -51,8 +51,7 @@ let ready = false;
 /** Hidrata sesión y modo desde storage. Se espera antes del primer render. */
 export async function initApiClient(): Promise<StoredSession | null> {
   session = await readSession();
-  const override = await readMockOverride();
-  if (override !== null) mockMode = override;
+  await writeMockOverride(null);
   ready = true;
   return session;
 }
@@ -70,9 +69,11 @@ export function apiBaseUrl(): string {
 }
 
 /** Conmutación en caliente: pasar a backend real sin recompilar la extensión. */
-export async function setMockMode(value: boolean): Promise<void> {
-  mockMode = value;
-  await writeMockOverride(value === ENV_MOCK ? null : value);
+export async function setMockMode(_value: boolean): Promise<void> {
+  // Conservamos la firma para consumidores antiguos, pero nunca desviamos las
+  // operaciones hacia mocks: esos recursos no existen en el backend.
+  mockMode = false;
+  await writeMockOverride(null);
 }
 
 export function currentSession(): StoredSession | null {

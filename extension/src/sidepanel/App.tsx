@@ -6,17 +6,14 @@
  */
 
 import { useCallback, useState } from 'react';
-import { AuthView } from './components/AuthView';
 import { HeaderBar } from './components/HeaderBar';
 import { Navigation, type PanelTab } from './components/Navigation';
-import { NewOrderView } from './components/NewOrderView';
+import { BackendMonitorView } from './components/BackendMonitorView';
 import { WatchListView } from './components/WatchListView';
-import { useAuth } from './state/authContext';
 import type { InstructionSummary } from '@/services/api.types';
 import { isMockMode } from '@/services/apiClient';
 
 export function App() {
-  const { session } = useAuth();
   // El backend Rust solo sirve monitores y eventos: abre directamente la
   // superficie que existe en vivo y deja el análisis dinámico para mocks.
   const [tab, setTab] = useState<PanelTab>(() => (isMockMode() ? 'new-order' : 'orders'));
@@ -26,7 +23,6 @@ export function App() {
 
   // El backend Rust no implementa usuarios ni auth. Mantener la puerta de
   // login en vivo haría inaccesible su watch list aunque el adaptador funcione.
-  if (!session && isMockMode()) return <AuthView />;
 
   const needsAttention = summaries?.some((item) => item.status === 'AWAITING_APPROVAL') ?? false;
 
@@ -40,7 +36,7 @@ export function App() {
         needsAttention={needsAttention}
       />
       <main className="flex-1 px-3 py-3">
-        {tab === 'new-order' ? <NewOrderView /> : <WatchListView onCount={handleCount} />}
+        {tab === 'new-order' ? <BackendMonitorView /> : <WatchListView onCount={handleCount} />}
       </main>
     </div>
   );

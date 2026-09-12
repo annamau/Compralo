@@ -1,0 +1,16 @@
+[package]
+name = "monitoring"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+domain.workspace = true
+product-intelligence = { path = "../product-intelligence" }
+spider = { version = "2.53.9", default-features = false }
+thiserror.workspace = true
+tokio.workspace = true
+url.workspace = true
+

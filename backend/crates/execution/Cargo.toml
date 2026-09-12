@@ -1,0 +1,18 @@
+[package]
+name = "execution"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+domain.workspace = true
+persistence = { path = "../persistence" }
+rule-engine = { path = "../rule-engine" }
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+url.workspace = true
+uuid.workspace = true

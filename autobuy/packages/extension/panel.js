@@ -20,18 +20,18 @@ async function activeTab() {
 
 async function readPage(force = false) {
   const tab = await activeTab();
-  if (!tab?.id) { status("No active tab.", "error"); return; }
+  if (!tab?.id) { ++seq; status("No active tab.", "error"); return; }
   if (!force && tab.url && tab.url === lastReadUrl && Date.now() - lastReadAt < 4000) return; // same page, just read
   if (tab.url && !/^https?:/.test(tab.url)) {                    // our own dashboard, chrome://, new tab…
-    lastReadUrl = tab.url; lastReadAt = Date.now();
-    show("product", false); show("order", false); show("result", false);
+    ++seq; lastReadUrl = tab.url; lastReadAt = Date.now();
+    show("product", false); show("order", false); show("result", false); show("gift-card", false); show("watch-instead", false);
     status("Open a product page (http or https) and the panel will read it.");
     return;
   }
   const my = ++seq;
   lastReadUrl = tab.url ?? ""; lastReadAt = Date.now();
   status(`Reading ${tab.url ? hostOf(tab.url) : "this page"}…`, "skeleton");
-  show("product", false); show("order", false); show("result", false);
+  show("product", false); show("order", false); show("result", false); show("gift-card", false); show("watch-instead", false);
   try {
     const [{ result: page }] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -53,6 +53,8 @@ async function readPage(force = false) {
     renderProduct(body, page, screenshot);
     await renderForm(body.controls ?? []);
     status("");
+    show("order", false); show("watch-instead");
+    await matchGiftCard(my);
     // Some shops paint the price after load; read once more a moment later if it was missing.
     if (product.listed_price == null && !retriedFor.has(page.url)) { retriedFor.add(page.url); setTimeout(() => readPage(true), 2500); }
   } catch (e) {
@@ -128,6 +130,8 @@ async function renderForm(controls) {
   show("order");
 }
 
+$("watch-instead").addEventListener("click", () => show("order", $("order").classList.contains("hidden")));
+
 $("order").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const btn = $("create"); btn.disabled = true; btn.textContent = "Authorising hold…";
@@ -185,6 +189,49 @@ function renderRustResult(monitor, auth) {
   $("result").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+// The article reader supplies context; the server pins retailer-to-card mappings and amounts.
+let giftCsrf = '';
+async function giftRequest(path, body) {
+  const response = await fetch(`${API()}${path}`, {method:body?'POST':'GET', credentials:'include',
+    headers:{'content-type':'application/json','x-csrf-token':giftCsrf}, ...(body?{body:JSON.stringify(body)}:{}), signal:AbortSignal.timeout(30000)});
+  const value = await response.json();
+  if (!response.ok) throw new Error(value.error || 'Gift-card service is unavailable.');
+  return value;
+}
+async function matchGiftCard(readSequence) {
+  const root = $('gift-card'); root.replaceChildren(el('h2',{textContent:'Gift card for this article'}),el('p',{textContent:'Checking the retailer and card value…'})); show('gift-card');
+  try {
+    // Establish only a same-backend HttpOnly session. Provider credentials never enter the extension.
+    await fetch(`${API()}/bitrefill`, {credentials:'include',signal:AbortSignal.timeout(30000)});
+    const connection = await giftRequest('/v1/integrations/bitrefill/status');
+    if (readSequence !== seq) return;
+    giftCsrf = connection.csrf;
+    if (!connection.connected) {
+      root.replaceChildren(el('h2',{textContent:'Connect purchases once'}),el('p',{textContent:'Connect your Bitrefill account once. Product matching and reviews stay here in the extension.'}));
+      const connect = el('button',{type:'button',className:'primary',textContent:'Connect purchase account'});
+      connect.onclick=async()=>{connect.disabled=true;try {const auth=await giftRequest('/v1/integrations/bitrefill/oauth/start',{});await chrome.tabs.create({url:auth.url});}catch(e){status(e.message,'error');}finally{connect.disabled=false;}};
+      const retry=el('button',{type:'button',className:'ghost',textContent:'I connected — check again'});retry.onclick=()=>matchGiftCard(seq);
+      root.append(connect,retry);return;
+    }
+    const amount = Math.round(Number(product.listed_price)*100);
+    if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('A listed product price is needed to choose a matching card.');
+    const result=await giftRequest('/v1/bitrefill/match',{url:sourceUrl,name:product.name,price_minor:amount,currency:product.currency,country:'ES'});
+    if (readSequence !== seq) return;
+    const q=result.quote;
+    root.replaceChildren(el('h2',{textContent:'Your matching gift card'}),
+      el('p',{textContent:`For ${q.article.name}`}),
+      el('h3',{textContent:q.name}),
+      el('p',{textContent:`Card value: ${q.face_value} ${q.face_currency} · catalog price: ${(q.catalog_total_minor/100).toFixed(2)} ${q.catalog_currency}`}),
+      el('p',{textContent:`Covers the article’s listed ${(q.article.price_minor/100).toFixed(2)} ${q.article.currency}. Shipping and retailer exclusions must be checked separately.`}),
+      el('p',{textContent:'You are buying a gift card. The store product is not ordered automatically.'}));
+    const terms=el('details',{},el('summary',{textContent:'Redemption and restrictions'}));
+    const plain=value=>new DOMParser().parseFromString(String(value||''),'text/html').body.textContent;
+    terms.append(el('p',{textContent:plain(q.restrictions)}),el('p',{textContent:plain(q.instructions)}));root.append(terms);
+    root.append(el('p',{className:'hint',textContent:result.checkout_note}),
+      el('button',{type:'button',className:'primary',disabled:true,textContent:'Buy gift card — unavailable in this test'}));
+  } catch(e) {if(readSequence===seq)root.replaceChildren(el('h2',{textContent:'Gift-card match unavailable'}),el('p',{textContent:e.message}));}
+}
+
 // ---- Backend setting. Resolved before the first read so the panel never calls the wrong host.
 async function initBackend() {
   API_BASE = await backendUrl();
@@ -192,7 +239,6 @@ async function initBackend() {
   $("backend_url").placeholder = DEFAULT_BACKEND_URL;
   $("intelligence_url").value = (await chrome.storage.sync.get("intelligence_url")).intelligence_url ?? "";
   $("dash-link").href = chrome.runtime.getURL("dashboard.html");
-  $("bitrefill-link").href = `${API_BASE}/bitrefill`;
   const known = KNOWN_BACKENDS.includes(API_BASE);
   $("backend_hint").textContent = known
     ? `Using ${API_BASE}.`

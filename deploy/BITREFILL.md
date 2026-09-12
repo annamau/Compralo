@@ -4,7 +4,7 @@ Status: implemented for local/pilot validation. This does not replace Stripe/Zin
 
 ## What ships
 
-The extension's **gift cards with Bitrefill** link opens `/bitrefill` on the configured Rust backend. This first slice uses a same-origin web page, rather than putting provider authorization in an extension page. OAuth credentials remain encrypted in SQLite; the browser receives only an HttpOnly, SameSite session cookie and a CSRF token. The existing restock UI is retained.
+The extension reads the current article and displays its matched gift card directly in the side panel. `/bitrefill` remains a developer diagnostic page; it is no longer linked from the extension. One-time OAuth setup still opens the provider authorization page. OAuth credentials remain encrypted in SQLite; the browser receives only an HttpOnly, SameSite session cookie and a CSRF token. The existing restock UI is retained.
 
 - OAuth discovery, S256 PKCE, single-use state, encrypted access/refresh tokens, refresh rotation and disconnect.
 - MCP discovery for the current credential; required tool fields checked at connection and before invoice creation. Actual hosted tool names and `package_value` are used, including the required search `intent`.
@@ -77,3 +77,11 @@ Ask Bitrefill to enable `delos-syldavia` on the user's account. Test country is 
 If Bitrefill exposes different schemas/prices for that test product, fail closed and update the normalization with recorded provider evidence. Do not substitute a production gift card silently. Any real wallet payment stays with the user.
 
 Sources: [Partner integration guide](https://docs.bitrefill.com/docs/mcp-partner-integration-guide), [hosted eCommerce MCP](https://docs.bitrefill.com/docs/ecommerce-mcp).
+
+## Article matching in the extension
+
+`POST /v1/bitrefill/match` binds the article URL, name, listed price, currency and country into a persisted review. The first verified mapping is Amazon Spain → `amazon_es-spain`. The smallest denomination covering the article's listed price is selected; a card below that amount is never substituted. Shipping and item-specific eligibility are not guaranteed. Unknown retailers, mismatched currencies/regions and amounts exceeding the pilot cap fail closed.
+
+Set `BITREFILL_EXTENSION_ORIGIN=chrome-extension://<your exact installed extension ID>` on Rust to accept CSRF-protected mutations from that extension only. Host permissions and an HttpOnly browser session are still required. OAuth credentials never enter extension storage. The same browser profile must complete the one-time connection.
+
+The inline flow currently supports matching and review only: `checkout_enabled` is false. The existing provider adapter requires a separately funded payment link, so enabling `BITREFILL_PURCHASES_ENABLED` does not make inline automatic payment available. No gift card is purchased by matching an article. A funded checkout mechanism is still required before enabling the inline Buy button.

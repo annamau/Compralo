@@ -70,6 +70,7 @@ struct App {
     client_id: String,
     oauth: Value,
     enabled: bool,
+    extension_origin: Option<String>,
     gate: Arc<Mutex<()>>,
 }
 impl App {
@@ -143,6 +144,9 @@ impl App {
         if mutation
             && (headers.get(header::ORIGIN).and_then(|v| v.to_str().ok())
                 != Some(self.origin.as_str())
+                && !self.extension_origin.as_deref().is_some_and(|origin| {
+                    headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) == Some(origin)
+                })
                 || headers.get("x-csrf-token").and_then(|v| v.to_str().ok()) != v["csrf"].as_str())
         {
             return Err(Error(
@@ -370,6 +374,16 @@ pub async fn configured_router(pool: SqlitePool) -> anyhow::Result<Router> {
             }
         }
     };
+    let extension_origin = std::env::var("BITREFILL_EXTENSION_ORIGIN")
+        .ok()
+        .filter(|s| !s.is_empty());
+    if let Some(origin) = &extension_origin {
+        let id = origin.strip_prefix("chrome-extension://").unwrap_or("");
+        anyhow::ensure!(
+            id.len() == 32 && id.bytes().all(|c| (b'a'..=b'p').contains(&c)),
+            "Invalid extension origin"
+        );
+    }
     let app = App {
         pool,
         cipher,
@@ -378,6 +392,7 @@ pub async fn configured_router(pool: SqlitePool) -> anyhow::Result<Router> {
         origin,
         client_id,
         oauth,
+        extension_origin,
         enabled: std::env::var("BITREFILL_PURCHASES_ENABLED").as_deref() == Ok("true"),
         gate: Arc::new(Mutex::new(())),
     };
@@ -395,7 +410,7 @@ fn routes(app: App) -> Router {
     Router::new().route("/bitrefill",get(page)).route("/bitrefill/app.js",get(js)).route("/bitrefill/style.css",get(css)).route("/bitrefill/oauth-client.json",get(client_metadata))
     .route("/v1/integrations/bitrefill/status",get(status)).route("/v1/integrations/bitrefill/oauth/start",post(oauth_start)).route("/v1/integrations/bitrefill/oauth/callback",get(oauth_callback))
     .route("/v1/integrations/bitrefill",axum::routing::delete(disconnect))
-    .route("/v1/bitrefill/search",post(search)).route("/v1/bitrefill/products/{id}",get(details))
+    .route("/v1/bitrefill/match",post(match_article)).route("/v1/bitrefill/search",post(search)).route("/v1/bitrefill/products/{id}",get(details))
     .route("/v1/bitrefill/quotes",post(quote)).route("/v1/bitrefill/quotes/{id}/approve",post(approve)).route("/v1/bitrefill/quotes/{id}/purchase",post(purchase)).route("/v1/bitrefill/quotes/{id}/cancel",post(cancel))
     .route("/v1/bitrefill/orders",get(orders)).route("/v1/bitrefill/orders/{id}",get(order)).route("/v1/bitrefill/orders/{id}/reveal",post(reveal))
     .layer(axum::middleware::from_fn(|req:axum::extract::Request,next:axum::middleware::Next|async move{
@@ -786,6 +801,91 @@ async fn quote(
         json!({"quote_id":quote_id,"quote_hash":hash,"expires_at":now()+TTL,"quote":v}),
     ))
 }
+#[derive(Deserialize, serde::Serialize)]
+struct ArticleInput {
+    url: String,
+    name: String,
+    price_minor: i64,
+    currency: String,
+    country: String,
+}
+fn retailer_for_article(article: &ArticleInput) -> Result<&'static str> {
+    let url = Url::parse(&article.url).map_err(|_| bad("Invalid product URL."))?;
+    let host = url.host_str().unwrap_or("");
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !(host == "amazon.es" || host.ends_with(".amazon.es"))
+        || article.currency != "EUR"
+        || article.country != "ES"
+    {
+        return Err(bad(
+            "A verified gift-card match is currently available for Amazon Spain products in EUR only.",
+        ));
+    }
+    if article.name.trim().is_empty() || article.name.len() > 500 || article.price_minor <= 0 {
+        return Err(bad("Read a product with a valid price first."));
+    }
+    Ok("amazon_es-spain")
+}
+fn covering_package(d: &Value, article: &ArticleInput) -> Result<String> {
+    d["packages"]
+        .as_array()
+        .ok_or(provider("packages"))?
+        .iter()
+        .filter(|p| p["package_currency"] == article.currency)
+        .filter_map(|p| {
+            Some((
+                euros(&p["package_value"]).ok()?,
+                p["package_value"].as_str()?,
+            ))
+        })
+        .filter(|(value, _)| *value >= article.price_minor)
+        .min_by_key(|(value, _)| *value)
+        .map(|(_, package)| package.to_string())
+        .ok_or(bad(
+            "No gift-card denomination covers this article's listed price.",
+        ))
+}
+async fn match_article(
+    State(a): State<App>,
+    h: HeaderMap,
+    Json(article): Json<ArticleInput>,
+) -> Result<Json<Value>> {
+    let pid = retailer_for_article(&article)?;
+    let _g = a.gate.lock().await;
+    let (id, mut session) = a.session(&h, true, true).await?;
+    rate(&a, &id).await?;
+    let token = a.token(&id, &mut session).await?;
+    let d = a
+        .call(
+            &token,
+            "get-product-details",
+            json!({"product_id":pid,"currency":"EUR"}),
+        )
+        .await?;
+    let package_value = covering_package(&d, &article)?;
+    let mut v = normalized_quote(
+        &d,
+        &QuoteInput {
+            product_id: pid.into(),
+            package_value,
+            country: article.country.clone(),
+        },
+    )?;
+    v["article"] = serde_json::to_value(&article).map_err(internal)?;
+    let quote_id = Uuid::new_v4().to_string();
+    let hash = digest(&serde_json::to_string(&v).map_err(internal)?);
+    sqlx::query("INSERT INTO bitrefill_quotes(id,owner,payload,hash,status,expires,amount,created) VALUES (?,?,?,?,'quoted',?,?,?)")
+        .bind(&quote_id).bind(id).bind(a.seal(&v)?).bind(&hash).bind(now()+TTL)
+        .bind(v["catalog_total_minor"].as_i64().unwrap()).bind(now()).execute(&a.pool).await.map_err(internal)?;
+    a.event(&quote_id, "article_matched").await?;
+    Ok(Json(
+        json!({"quote_id":quote_id,"quote_hash":hash,"expires_at":now()+TTL,"quote":v,
+        "checkout_enabled":false,"checkout_note":"Gift-card review is ready. Purchasing inside the extension is not enabled yet."}),
+    ))
+}
+
 #[derive(Deserialize)]
 struct Approval {
     quote_hash: String,
@@ -857,7 +957,7 @@ async fn purchase(
             json!({"product_id":q["product_id"],"currency":"EUR"}),
         )
         .await?;
-    let current = normalized_quote(
+    let mut current = normalized_quote(
         &d,
         &QuoteInput {
             product_id: q["product_id"].as_str().unwrap().into(),
@@ -865,6 +965,9 @@ async fn purchase(
             country: q["country"].as_str().unwrap().into(),
         },
     )?;
+    if let Some(article) = q.get("article") {
+        current["article"] = article.clone();
+    }
     if digest(&serde_json::to_string(&current).map_err(internal)?) != row.get::<String, _>("hash") {
         sqlx::query("UPDATE bitrefill_quotes SET status='expired' WHERE id=?")
             .bind(&qid)
@@ -1158,6 +1261,7 @@ mod tests {
             client_id: "test-client".into(),
             oauth: json!({}),
             enabled: true,
+            extension_origin: Some("chrome-extension://odecidcadjkacihfbmgaochbidfnphbl".into()),
             gate: Arc::new(Mutex::new(())),
         };
         let session = json!({"csrf":"csrf","token":{"access_token":"private-oauth-token"},"token_expires":now()+3600,"searched":{"kind":"giftcard","country":"ES","ids":["amazon_es-spain"]}});
@@ -1225,6 +1329,67 @@ mod tests {
         assert_eq!(s, StatusCode::OK, "{v}");
         id.into()
     }
+    #[tokio::test]
+    async fn extension_origin_requires_exact_allowlist_and_csrf() {
+        let (mut a, _) = setup().await;
+        let mut headers = HeaderMap::new();
+        headers.insert(header::COOKIE, "compralo_br_8082=session".parse().unwrap());
+        headers.insert("x-csrf-token", "csrf".parse().unwrap());
+        headers.insert(
+            header::ORIGIN,
+            a.extension_origin.as_ref().unwrap().parse().unwrap(),
+        );
+        assert!(a.session(&headers, true, true).await.is_ok());
+        headers.insert("x-csrf-token", "wrong".parse().unwrap());
+        assert!(a.session(&headers, true, true).await.is_err());
+        headers.insert("x-csrf-token", "csrf".parse().unwrap());
+        headers.insert(
+            header::ORIGIN,
+            "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .parse()
+                .unwrap(),
+        );
+        assert!(a.session(&headers, true, true).await.is_err());
+        headers.remove(header::ORIGIN);
+        a.extension_origin = None;
+        assert!(a.session(&headers, true, true).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn article_matching_binds_context_and_never_buys() {
+        let (a, mock) = setup().await;
+        let article = json!({"url":"https://www.amazon.es/dp/EXAMPLE","name":"Customer article","price_minor":450,"currency":"EUR","country":"ES"});
+        let (code, result) = request(&a, "/v1/bitrefill/match", Some(article.clone())).await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(result["quote"]["face_value"], "5");
+        assert_eq!(result["quote"]["article"], article);
+        assert_eq!(result["checkout_enabled"], false);
+        assert_eq!(mock.calls.load(Ordering::SeqCst), 0);
+        let mut spoofed = article.clone();
+        spoofed["url"] = json!("https://amazon.es.evil.example/product");
+        assert_eq!(
+            request(&a, "/v1/bitrefill/match", Some(spoofed)).await.0,
+            StatusCode::BAD_REQUEST
+        );
+        let mut high = article;
+        high["price_minor"] = json!(501);
+        assert_eq!(
+            request(&a, "/v1/bitrefill/match", Some(high)).await.0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    #[test]
+    fn matching_chooses_smallest_sufficient_denomination() {
+        let input = ArticleInput {
+            url: "https://amazon.es/dp/EXAMPLE".into(),
+            name: "Article".into(),
+            price_minor: 501,
+            currency: "EUR".into(),
+            country: "ES".into(),
+        };
+        assert_eq!(covering_package(&detail(), &input).unwrap(), "10");
+    }
+
     #[test]
     fn gift_cards_require_classified_search_and_reject_esims() {
         let old = json!({"searched":{"country":"ES","ids":["amazon_es-spain"]}});

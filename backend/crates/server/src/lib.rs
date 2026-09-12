@@ -27,6 +27,9 @@ pub struct AppState {
     pub store: Store,
     /// Kept as the concrete demo merchant so `/v1/demo/scenarios/{scenario}` can still drive it.
     pub merchant: DemoMerchant,
+    /// Whoever actually buys — the demo merchant, or P4 under `MERCHANT=p4`. The worker holds
+    /// the same `Arc`, so `/v1/demo/offers/{id}` executes through the selected backend.
+    pub checkout_merchant: Arc<dyn Merchant>,
     /// P4's money service, when `MERCHANT=p4`. `None` keeps the self-contained demo behaviour.
     pub funds: Option<Arc<P4Funds>>,
 }
@@ -364,15 +367,85 @@ async fn authorize_payment(
     ))
 }
 
+/// A hand-submitted offer is its own revalidation: there is no page to re-crawl, so
+/// `revalidate` echoes what was posted. The engine still re-runs `evaluate` on it, so the
+/// mandate ceiling is enforced on exactly the numbers that reach checkout.
+struct SubmittedOffer(NormalizedOffer);
+
+#[async_trait::async_trait]
+impl OfferSource for SubmittedOffer {
+    async fn check(
+        &self,
+        _: &Monitor,
+    ) -> Result<NormalizedOffer, domain::OfferSourceError> {
+        Ok(self.0.clone())
+    }
+    async fn revalidate(
+        &self,
+        _: &NormalizedOffer,
+    ) -> Result<NormalizedOffer, domain::OfferSourceError> {
+        Ok(self.0.clone())
+    }
+}
+
+/// What `POST /v1/demo/offers/{id}` answers: the gate's decision, and — when it qualified —
+/// what the merchant did with it.
+#[derive(Serialize)]
+struct SubmittedOfferResponse {
+    #[serde(flatten)]
+    decision: EvaluationDecision,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    execution: Option<serde_json::Value>,
+}
+
+/// Feed an offer straight to a monitor, bypassing the crawler.
+///
+/// A rejected offer is recorded and nothing else happens. A qualified one runs the same
+/// [`ExecutionEngine`] the worker uses, against whichever merchant `MERCHANT` selected — so
+/// this is the one HTTP path that can drive a monitor to `purchased` under `MERCHANT=p4`,
+/// where the checker cannot crawl a sandbox URL.
 async fn submit_offer(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(offer): Json<NormalizedOffer>,
-) -> Result<Json<EvaluationDecision>, ApiError> {
+) -> Result<Json<SubmittedOfferResponse>, ApiError> {
     let monitor = state.store.get_monitor(id).await?;
     let decision = evaluate(&monitor, &offer, Utc::now());
     state.store.record_offer(id, &offer, &decision).await?;
-    Ok(Json(decision))
+    if matches!(decision, EvaluationDecision::Rejected(_)) {
+        return Ok(Json(SubmittedOfferResponse {
+            decision,
+            execution: None,
+        }));
+    }
+    let source = SubmittedOffer(offer.clone());
+    let execution = match ExecutionEngine::new(state.store.clone())
+        .execute(&monitor, &offer, &source, state.checkout_merchant.as_ref())
+        .await
+    {
+        Ok(order) => serde_json::json!({
+            "result": "purchased",
+            "order_id": order.id,
+            "total_minor": order.total_minor,
+            "currency": order.currency,
+        }),
+        // Not a 5xx: the gate did its job and the outcome is already an event on the monitor.
+        Err(error) => {
+            state
+                .store
+                .append_event(
+                    id,
+                    "qualified_offer_not_executed",
+                    serde_json::json!({"error": error.to_string()}),
+                )
+                .await?;
+            serde_json::json!({"result": "not_executed", "error": error.to_string()})
+        }
+    };
+    Ok(Json(SubmittedOfferResponse {
+        decision,
+        execution: Some(execution),
+    }))
 }
 
 async fn set_scenario(
@@ -507,9 +580,11 @@ mod tests {
     async fn app() -> Router {
         let store = Store::in_memory().await.unwrap();
         store.migrate().await.unwrap();
+        let merchant = DemoMerchant::new();
         router(AppState {
             store,
-            merchant: DemoMerchant::new(),
+            checkout_merchant: Arc::new(merchant.clone()),
+            merchant,
             funds: None,
         })
     }
@@ -598,5 +673,139 @@ mod tests {
             MonitorStatus::Purchased
         );
         assert_eq!(merchant.order_count().await, 1);
+    }
+
+    /// A monitor armed and fed one qualifying offer over HTTP, with no crawler involved.
+    /// This is the path the P4 demo uses, since the checker cannot crawl a sandbox URL.
+    async fn armed_monitor(store: &Store, maximum_total_minor: i64) -> (Monitor, NormalizedOffer) {
+        let product = CanonicalProduct {
+            name: "PS5 Slim Digital".into(),
+            brand: Some("Sony".into()),
+            model: Some("CFI-2016B".into()),
+            identifiers: HashMap::new(),
+        };
+        let url = Url::parse("https://demo.example/ps5").unwrap();
+        let monitor = Monitor {
+            id: Uuid::new_v4(),
+            url: url.clone(),
+            product: Some(product.clone()),
+            constraints: PurchaseConstraints {
+                maximum_total_minor,
+                currency: "EUR".into(),
+                condition: Some(ProductCondition::New),
+                variants: HashMap::new(),
+                bundles_allowed: false,
+                approved_retailers: vec!["demo".into()],
+            },
+            deadline: Utc::now() + ChronoDuration::days(1),
+            status: MonitorStatus::Active,
+            check_interval_seconds: 60,
+            created_at: Utc::now(),
+        };
+        store.create_monitor(&monitor).await.unwrap();
+        store
+            .create_payment_authorization(monitor.id, maximum_total_minor, "EUR")
+            .await
+            .unwrap();
+        let offer = NormalizedOffer {
+            product,
+            retailer: "demo".into(),
+            available: true,
+            item_price_minor: Some(24_800),
+            shipping_minor: Some(0),
+            total_minor: Some(24_800),
+            currency: Some("EUR".into()),
+            condition: Some(ProductCondition::New),
+            variants: HashMap::new(),
+            source_url: url,
+            checked_at: Utc::now(),
+        };
+        (monitor, offer)
+    }
+
+    async fn post_offer(router: Router, id: Uuid, offer: &NormalizedOffer) -> serde_json::Value {
+        let response = router
+            .oneshot(
+                Request::post(format!("/v1/demo/offers/{id}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(offer).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_submitted_qualifying_offer_is_bought_through_the_selected_merchant() {
+        let store = Store::in_memory().await.unwrap();
+        store.migrate().await.unwrap();
+        let (monitor, offer) = armed_monitor(&store, 25_000).await;
+        let merchant = DemoMerchant::new();
+        let router = router(AppState {
+            store: store.clone(),
+            checkout_merchant: Arc::new(merchant.clone()),
+            merchant,
+            funds: None,
+        });
+
+        let body = post_offer(router, monitor.id, &offer).await;
+        assert_eq!(body["result"], "qualified");
+        assert_eq!(body["execution"]["result"], "purchased");
+        assert_eq!(body["execution"]["total_minor"], 24_800);
+        assert_eq!(body["execution"]["currency"], "EUR");
+
+        assert_eq!(
+            store.get_monitor(monitor.id).await.unwrap().status,
+            MonitorStatus::Purchased
+        );
+        assert!(
+            store
+                .events(monitor.id)
+                .await
+                .unwrap()
+                .iter()
+                .any(|e| e.kind == "purchase_confirmed")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_submitted_over_mandate_offer_never_reaches_the_merchant() {
+        let store = Store::in_memory().await.unwrap();
+        store.migrate().await.unwrap();
+        // A €248 offer against a €200 ceiling: rejected by the gate, so nothing is bought.
+        let (monitor, offer) = armed_monitor(&store, 20_000).await;
+        let merchant = DemoMerchant::new();
+        let router = router(AppState {
+            store: store.clone(),
+            checkout_merchant: Arc::new(merchant.clone()),
+            merchant: merchant.clone(),
+            funds: None,
+        });
+
+        let body = post_offer(router, monitor.id, &offer).await;
+        assert_eq!(body["result"], "rejected");
+        assert!(
+            body["execution"].is_null(),
+            "a rejected offer must not report an execution"
+        );
+
+        assert_eq!(merchant.order_count().await, 0, "the merchant was not called");
+        assert_eq!(
+            store.get_monitor(monitor.id).await.unwrap().status,
+            MonitorStatus::Active
+        );
+        assert!(
+            !store
+                .events(monitor.id)
+                .await
+                .unwrap()
+                .iter()
+                .any(|e| e.kind == "execution_started")
+        );
     }
 }

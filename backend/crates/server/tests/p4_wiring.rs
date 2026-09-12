@@ -8,7 +8,7 @@
 //! Start the service first:
 //!
 //! ```sh
-//! cd p4 && npm start          # http://localhost:4242
+//! cd ../Compralo/money && PORT=4242 npm start          # http://localhost:4242
 //! P4_URL=http://localhost:4242 cargo test -p server --test p4_wiring -- --nocapture
 //! ```
 
@@ -39,7 +39,7 @@ async fn live_p4() -> Option<String> {
     match client.get(format!("{url}/health")).send().await {
         Ok(response) if response.status().is_success() => Some(url),
         _ => {
-            eprintln!("SKIP: no P4 money service at {url} (start it with `cd p4 && npm start`)");
+            eprintln!("SKIP: no P4 money service at {url} (start it with `cd ../Compralo/money && PORT=4242 npm start`)");
             None
         }
     }

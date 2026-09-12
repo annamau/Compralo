@@ -66,7 +66,7 @@ is self-contained and spends nothing. `p4` talks to the P4 money service over
 HTTP: a Stripe mandate hold at arm time, an aggregator order at buy time.
 
 ```sh
-cd ../Compralo/p4 && npm start          # P4 on :4242, sandbox keys only
+cd ../Compralo/money && PORT=4242 npm start   # P4 on :4242, sandbox keys only
 
 MERCHANT=p4 P4_URL=http://localhost:4242 cargo run -p server
 ```
@@ -93,6 +93,38 @@ What changes with `p4`:
   uncovered retailer is a stock alert, not an order.
 - Cancelling a monitor and expiring one both call `POST /funds/release`,
   best effort — the state change never waits on the money service.
+- `POST /v1/demo/offers/{id}` runs the offer through the gate and, when it
+  qualifies, executes it against the selected merchant. Under `MERCHANT=p4`
+  that is the only way to drive a purchase over HTTP, because the checker
+  cannot crawl a Zinc sandbox slug. It answers the decision plus an
+  `execution` object; a rejected offer has no `execution` and buys nothing.
+
+### The demo, end to end
+
+```sh
+ID=$(curl -sX POST 127.0.0.1:3000/v1/monitors -H 'content-type: application/json' -d '{
+  "url":"https://zinc.com/shop/products/test-success",
+  "product":{"name":"PS5 Slim Digital","brand":"Sony","model":"CFI-2016B","identifiers":{}},
+  "constraints":{"maximum_total_minor":25000,"currency":"EUR","condition":"new",
+    "variants":{},"bundles_allowed":false,"approved_retailers":["amazon"]},
+  "deadline":"2026-09-15T12:00:00Z","check_interval_seconds":3600}' | jq -r .id)
+
+# One tap: authorize the €250 ceiling. Answers a real Stripe pi_… hold.
+curl -sX POST 127.0.0.1:3000/v1/monitors/$ID/payment-authorizations \
+  -H 'content-type: application/json' -d '{"maximum_minor":25000,"currency":"EUR"}'
+
+# €248 qualifies: Stripe captures 24800, Zinc places the order, status -> purchased.
+curl -sX POST 127.0.0.1:3000/v1/demo/offers/$ID -H 'content-type: application/json' -d '{
+  "product":{"name":"PS5 Slim Digital","brand":"Sony","model":"CFI-2016B","identifiers":{}},
+  "retailer":"amazon","available":true,"item_price_minor":24800,"shipping_minor":0,
+  "total_minor":24800,"currency":"EUR","condition":"new","variants":{},
+  "source_url":"https://zinc.com/shop/products/test-success","checked_at":"2026-09-12T12:00:00Z"}'
+
+curl -s 127.0.0.1:3000/v1/monitors/$ID/events | jq -r '.[] | "\(.kind) \(.payload)"'
+```
+
+Swap `total_minor` to `46500` and the gate rejects it on `TotalAboveMaximum`
+before P4 is called at all — no `execution_started`, the monitor keeps watching.
 
 **The ceiling is not enforced in this process.** Checkout sends the offer total
 to P4 without comparing it to the mandate first, and lets Stripe refuse an

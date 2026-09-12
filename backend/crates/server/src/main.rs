@@ -73,7 +73,9 @@ async fn main() -> anyhow::Result<()> {
     let worker = MonitorWorker::new(
         store.clone(),
         source,
-        checkout_merchant,
+        // The router holds the same merchant, so `/v1/demo/offers` buys through whichever
+        // backend `MERCHANT` selected — and shares its coverage cache with the checker.
+        checkout_merchant.clone(),
         format!("worker-{}", std::process::id()),
     )
     .with_funds(funds.clone());
@@ -84,6 +86,7 @@ async fn main() -> anyhow::Result<()> {
         router(AppState {
             store,
             merchant,
+            checkout_merchant,
             funds,
         }),
     )
